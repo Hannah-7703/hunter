@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+:root {
+  /* 背景 */
+  --bg-primary: #E9EAE5;
+  --bg-secondary: #FAF8F5;
+  --bg-card: #FFF7EF;
+  --bg-inner-card: #FFFCF8;
+  --bg-audio-bar: #F0E8DA;
+  --divider: #ECE6DD;
+  --bg-page: #F7F5F1;
+
+  /* 磨砂玻璃表面 */
+  --bg-glass-page: rgba(255, 252, 247, .62);
+  --bg-glass-card: rgba(255, 250, 243, .72);
+  --bg-glass-inner-card: rgba(255, 253, 249, .68);
+  --bg-glass-nav: rgba(250, 248, 242, .76);
+  --border-glass: rgba(255, 255, 255, .72);
+  --control-glass: rgba(255, 255, 255, .42);
+
+  /* 文字 */
+  --text-primary: #2D2B2B;
+  --text-secondary: #777777;
+  --text-hint: #999999;
+  --text-disabled: #C7C7C7;
+  --text-heading: #264332;
+  --text-subtitle: #6B7A72;
+  --stage-bg: #F8F6F2;
+  --stage-border: #E5E0D6;
+
+  /* 强调色 */
+  --brand: #7E8E68;
+  --success: #6D8F6B;
+  --danger: #D15E5E;
+
+  /* 交互 */
+  --overlay: rgba(45,43,43,.25);
+  --control-bg: rgba(0,0,0,.06);
+  --control-bg-hover: rgba(0,0,0,.1);
+  --bg-dialog: #FFFFFF;
+  --bg-mind-node: #FFFFFF;
+  --mind-line: #D1CBB8;
+
+  /* 圆角 */
+  --radius-app: 24px;
+  --radius-card: 22px;
+  --radius-bullet: 12px;
+  --radius-button: 999px;
+  --radius-input: 18px;
+  --radius-tag: 999px;
+
+  /* 阴影 */
+  --shadow: 0 12px 30px rgba(0,0,0,.05);
+
+  /* 间距 */
+  --space-8: 8px;
+  --space-16: 16px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-48: 48px;
+  --space-64: 64px;
+
+  /* Phase 4 新增 */
+  --overlay-bg: rgba(45, 43, 43, 0.6);
+  --invite-input-bg: #E9EAE5;
+  --invite-confirm-bg: #4CAF50;
+  --invite-error: #E53935;
+}
+
+body {
+  font-family: var(--font-body), var(--font-cjk), "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  max-width: 720px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  position: relative;
+  isolation: isolate;
+}
+
+body::before,
+body::after {
+  content: none;
+}
+
+.app-page {
+  position: relative;
+  background: var(--bg-primary);
+}
+
+.capture-page {
+  position: relative;
+  background: #E9EAE5;
+}
