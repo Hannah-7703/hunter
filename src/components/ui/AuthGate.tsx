@@ -93,7 +93,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         {/* 虚化的 Capture 页 */}
         <div className="auth-gate-blur" aria-hidden="true">
           <div className="pt-[var(--space-48)] pb-[var(--space-8)] px-[24px]">
-            <h1 className="page-title">Hunter</h1>
+            <h1 className="page-title">Aha Hunter</h1>
           </div>
         </div>
 

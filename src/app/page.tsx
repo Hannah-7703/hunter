@@ -318,7 +318,7 @@ export default function CapturePage() {
               <circle cx="35.2" cy="35.7" r="1.6" fill="currentColor" />
             </svg>
           </div>
-          <h1 className="page-title">Hunter</h1>
+          <h1 className="page-title">Aha Hunter</h1>
         </div>
         <p className="capture-subtitle">把一闪而过的想法留住</p>
       </div>
