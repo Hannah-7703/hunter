@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 // ===== 邀请码校验逻辑（与 route.ts 中一致） =====
 
-const VALID_CHARS = /[^ABCDEFGHJKLMNPQRSTUVWXYZ23456789]/g;
+const VALID_CHARS = /[^A-Z0-9]/g;
 
 function sanitizeCode(raw: string): string {
   return raw
@@ -12,8 +12,8 @@ function sanitizeCode(raw: string): string {
 }
 
 describe('邀请码校验', () => {
-  it('过滤非法字符（含 I/0/O/1）', () => {
-    expect(sanitizeCode('ABC0DEF1')).toBe('ABCDEF');
+  it('保留合法数字（含 0/1）', () => {
+    expect(sanitizeCode('ABC0DEF1')).toBe('ABC0DEF1');
   });
 
   it('过滤非法字符（含小写字母）', () => {

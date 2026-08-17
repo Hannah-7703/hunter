@@ -73,7 +73,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const handleCodeChange = useCallback((value: string) => {
     const filtered = value
       .toUpperCase()
-      .replace(/[^ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789]/g, '');
+      .replace(/[^A-Z0-9]/g, '');
     setCode(filtered);
     if (error) setError('');
   }, [error]);

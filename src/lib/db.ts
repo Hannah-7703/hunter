@@ -14,14 +14,26 @@ export class DatabaseOperationError extends Error {
   }
 }
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+function createSupabaseClient() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('缺少 SUPABASE_URL 或 SUPABASE_SERVICE_KEY 环境变量，请检查 .env.local');
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('缺少 SUPABASE_URL 或 SUPABASE_SERVICE_KEY 环境变量');
+  }
+
+  return createClient(supabaseUrl, supabaseServiceKey);
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+let supabaseClient: ReturnType<typeof createSupabaseClient> | undefined;
+
+function getSupabaseClient(): ReturnType<typeof createSupabaseClient> {
+  if (!supabaseClient) {
+    supabaseClient = createSupabaseClient();
+  }
+
+  return supabaseClient;
+}
 
 // ====== 防御性校验 ======
 
@@ -101,7 +113,7 @@ export async function dbCreateNote(
 ): Promise<Note> {
   requireUserId(context);
   const row = noteToSnake({ ...data as unknown as Record<string, unknown>, user_id: context.userId });
-  const { data: created, error } = await supabase
+  const { data: created, error } = await getSupabaseClient()
     .from('notes')
     .insert(row)
     .select()
@@ -113,7 +125,7 @@ export async function dbCreateNote(
 
 export async function dbGetNoteById(id: string, context: RequestContext): Promise<Note | null> {
   requireUserId(context);
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from('notes')
     .select()
     .eq('user_id', context.userId)
@@ -127,7 +139,7 @@ export async function dbGetNoteById(id: string, context: RequestContext): Promis
 
 export async function dbListNotes(context: RequestContext): Promise<Note[]> {
   requireUserId(context);
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from('notes')
     .select()
     .eq('user_id', context.userId)
@@ -150,7 +162,7 @@ export async function dbUpdateNote(
   if (data.deepThinking !== undefined) snake.deep_thinking = data.deepThinking;
   snake.updated_at = data.updatedAt;
 
-  const { data: updated, error } = await supabase
+  const { data: updated, error } = await getSupabaseClient()
     .from('notes')
     .update(snake)
     .eq('user_id', context.userId)
@@ -169,7 +181,7 @@ export async function dbDeleteNoteById(id: string, context: RequestContext): Pro
   const note = await dbGetNoteById(id, context);
 
   // 2. 查出关联的 mind_nodes
-  const { data: linkedNodes } = await supabase
+  const { data: linkedNodes } = await getSupabaseClient()
     .from('mind_nodes')
     .select('id, item_id')
     .eq('user_id', context.userId)
@@ -194,7 +206,7 @@ export async function dbDeleteNoteById(id: string, context: RequestContext): Pro
       const itemId = node.item_id as string;
       const snapshot = itemMap.get(itemId);
       if (snapshot) {
-        await supabase
+        await getSupabaseClient()
           .from('mind_nodes')
           .update({ label: snapshot.summary, detail: snapshot.detail })
           .eq('user_id', context.userId)
@@ -204,7 +216,7 @@ export async function dbDeleteNoteById(id: string, context: RequestContext): Pro
   }
 
   // 4. 删除笔记
-  const { error: noteError } = await supabase
+  const { error: noteError } = await getSupabaseClient()
     .from('notes')
     .delete()
     .eq('user_id', context.userId)
@@ -212,7 +224,7 @@ export async function dbDeleteNoteById(id: string, context: RequestContext): Pro
   if (noteError) throw new Error(`数据库删除笔记失败: ${noteError.message}`);
 
   // 5. 关联节点的 note_id 设为 null
-  const { error: mindNodeError } = await supabase
+  const { error: mindNodeError } = await getSupabaseClient()
     .from('mind_nodes')
     .update({ note_id: null })
     .eq('user_id', context.userId)
@@ -229,7 +241,7 @@ export async function dbCreateMindNode(
 ): Promise<MindNode> {
   requireUserId(context);
   const row = mindNodeToSnake({ ...data as unknown as Record<string, unknown>, user_id: context.userId });
-  const { data: created, error } = await supabase
+  const { data: created, error } = await getSupabaseClient()
     .from('mind_nodes')
     .insert(row)
     .select()
@@ -241,7 +253,7 @@ export async function dbCreateMindNode(
 
 export async function dbListMindNodes(context: RequestContext): Promise<MindNode[]> {
   requireUserId(context);
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from('mind_nodes')
     .select()
     .eq('user_id', context.userId);
@@ -252,7 +264,7 @@ export async function dbListMindNodes(context: RequestContext): Promise<MindNode
 
 export async function dbDeleteMindNode(id: string, context: RequestContext): Promise<void> {
   requireUserId(context);
-  const { error } = await supabase
+  const { error } = await getSupabaseClient()
     .from('mind_nodes')
     .delete()
     .eq('user_id', context.userId)
@@ -270,37 +282,51 @@ export async function dbVerifyInviteCode(code: string): Promise<string | null> {
   const codeHash = hashCode(code);
 
   // 先按 hash 查
-  const { data: byHash } = await supabase
+  const { data: byHash, error: byHashError } = await getSupabaseClient()
     .from('invite_codes')
     .select('user_uuid, status')
     .eq('code_hash', codeHash)
     .maybeSingle();
 
+  if (byHashError) {
+    throw new DatabaseOperationError('INVITE_LOOKUP_BY_HASH_FAILED', byHashError.code ?? null);
+  }
+
   if (byHash) {
     if ((byHash as Record<string, unknown>).status !== 'active') return null;
     const uuid = (byHash as Record<string, unknown>).user_uuid as string;
     // 首次使用时标记 used_at
-    await supabase
+    const { error: markUsedError } = await getSupabaseClient()
       .from('invite_codes')
       .update({ used_at: new Date().toISOString() })
       .eq('code_hash', codeHash)
       .is('used_at', null);
+    if (markUsedError) {
+      throw new DatabaseOperationError('INVITE_MARK_USED_FAILED', markUsedError.code ?? null);
+    }
     return uuid;
   }
 
   // 向后兼容：未迁移的旧数据（code_hash 为空），直接比对明文
-  const { data: byCode } = await supabase
+  const { data: byCode, error: byCodeError } = await getSupabaseClient()
     .from('invite_codes')
     .select('user_uuid, status, code_hash')
     .eq('code', code)
     .maybeSingle();
 
+  if (byCodeError) {
+    throw new DatabaseOperationError('INVITE_LOOKUP_BY_CODE_FAILED', byCodeError.code ?? null);
+  }
+
   if (byCode && !(byCode as Record<string, unknown>).code_hash && (byCode as Record<string, unknown>).status === 'active') {
     // 补写 hash
-    await supabase
+    const { error: backfillHashError } = await getSupabaseClient()
       .from('invite_codes')
       .update({ code_hash: codeHash })
       .eq('code', code);
+    if (backfillHashError) {
+      throw new DatabaseOperationError('INVITE_HASH_BACKFILL_FAILED', backfillHashError.code ?? null);
+    }
     return (byCode as Record<string, unknown>).user_uuid as string;
   }
 
@@ -314,7 +340,7 @@ export async function dbCreateSession(
   tokenHash: string,
   expiresAt: string
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await getSupabaseClient()
     .from('sessions')
     .insert({
       user_uuid: userUuid,
@@ -326,7 +352,7 @@ export async function dbCreateSession(
 }
 
 export async function dbValidateSession(tokenHash: string): Promise<string | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from('sessions')
     .select('user_uuid, expires_at, revoked')
     .eq('token_hash', tokenHash)
@@ -342,7 +368,7 @@ export async function dbValidateSession(tokenHash: string): Promise<string | nul
 }
 
 export async function dbRevokeSession(tokenHash: string): Promise<void> {
-  await supabase
+  await getSupabaseClient()
     .from('sessions')
     .update({ revoked: true })
     .eq('token_hash', tokenHash);
@@ -358,7 +384,7 @@ export interface UserMindmapPreferences {
 
 export async function dbGetMindmapPreferences(context: RequestContext): Promise<UserMindmapPreferences> {
   requireUserId(context);
-  const { data, error } = await supabase
+  const { data, error } = await getSupabaseClient()
     .from('user_preferences')
     .select('mindmap_manual_root_node_id, mindmap_excluded_node_ids, mindmap_focus_result')
     .eq('user_id', context.userId)
@@ -388,7 +414,7 @@ export async function dbUpsertMindmapPreferences(
     update.mindmap_focus_result = prefs.focusResult;
   }
 
-  const { error } = await supabase
+  const { error } = await getSupabaseClient()
     .from('user_preferences')
     .upsert({ user_id: context.userId, ...update });
   if (error) throw new DatabaseOperationError('MINDMAP_PREFERENCES_UPSERT_FAILED', error.code ?? null);
