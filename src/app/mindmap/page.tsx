@@ -14,6 +14,7 @@ import {
 import {
   buildVisibleEdges,
   computeFocusLayout,
+  fitLayoutToCanvas,
   nodesHash,
   type FocusResult,
 } from '@/lib/mindmapLayout';
@@ -222,9 +223,11 @@ export default function MindMapPage() {
   }
 
   const focusResult = selectedNodeId ? selectedFocusResult : readyFocus;
-  const layout = focusResult
+  const rawLayout = focusResult
     ? computeFocusLayout(nodes, focusResult, SVG_WIDTH, SVG_HEIGHT)
     : computeScatterLayout(nodes);
+  const fittedLayout = fitLayoutToCanvas(rawLayout, SVG_WIDTH + PAD * 2, SVG_HEIGHT + PAD * 2, PAD);
+  const layout = fittedLayout.layout;
   const visibleEdges = focusResult ? buildVisibleEdges(focusResult) : [];
   const showLines = Boolean(focusResult && linesHash === hash);
 
@@ -275,8 +278,8 @@ export default function MindMapPage() {
     }
   }
 
-  const paddedWidth = SVG_WIDTH + PAD * 2;
-  const paddedHeight = SVG_HEIGHT + PAD * 2;
+  const paddedWidth = fittedLayout.width;
+  const paddedHeight = fittedLayout.height;
 
   return (
     <main className="app-page min-h-[100dvh] pb-[72px] px-[24px]">

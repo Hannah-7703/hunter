@@ -2,6 +2,7 @@ import { SYSTEM_PROMPT_PHASE_B, buildUserPromptPhaseB } from '@/lib/prompts';
 import { deepseekChat } from '@/lib/deepseekClient';
 import { validateSession } from '@/lib/auth';
 import { logError } from '@/lib/logger';
+import type { AiFailureCode } from '@/lib/diagnostics';
 import type { KeyPoint, DTItem } from '@/shared/types';
 
 function stripMarkdownCodeBlock(text: string): string {
@@ -17,12 +18,20 @@ function truncateSummary(text: string): string {
   return text.length > 24 ? text.slice(0, 24) + '…' : text;
 }
 
+class AiResponseParseError extends Error {}
+
+function aiFailureMessage(code: AiFailureCode): string {
+  if (code === 'AI_TIMEOUT') return '深度分析响应超时，请稍后重试';
+  if (code === 'AI_INVALID_RESPONSE') return 'AI 返回结果异常，请稍后重试';
+  return '深度分析暂时不可用，请稍后重试';
+}
+
 function safeParsePhaseBResponse(raw: string): { question: DTItem[]; breakdown: DTItem[]; expand: DTItem[] } {
   let json: Record<string, unknown>;
   try {
     json = JSON.parse(stripMarkdownCodeBlock(raw));
   } catch {
-    throw new Error('AI 返回的 JSON 解析失败');
+    throw new AiResponseParseError();
   }
 
   const now = Date.now();
@@ -49,7 +58,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const ctx = await validateSession(request);
     if (!ctx) {
-      return Response.json({ error: '未认证', code: 401 }, { status: 401 });
+      return Response.json({ error: '未认证', code: 'SESSION_INVALID' }, { status: 401 });
     }
 
     const { original, keyPoints } = (await request.json()) as {
@@ -79,25 +88,33 @@ export async function POST(request: Request): Promise<Response> {
       logError('PHASE_B_AI_FAILED', {
         route: '/api/process/phase-b',
         errorType: 'AI_UPSTREAM',
+        failureCode: result.error.code,
+        upstreamStatus: result.error.upstreamStatus,
+        attemptCount: 2,
+        inputLength: (original ?? '').length,
         durationMs: Date.now() - startMs,
       });
       return Response.json(
-        { error: '深度分析生成失败，请稍后重试', code: 500 },
-        { status: 500 }
+        { error: aiFailureMessage(result.error.code), code: result.error.code },
+        { status: 503 }
       );
     }
 
     const deepThinking = safeParsePhaseBResponse(result.content);
 
     return Response.json({ deepThinking });
-  } catch {
+  } catch (error) {
+    const failureCode: AiFailureCode = error instanceof AiResponseParseError
+      ? 'AI_INVALID_RESPONSE'
+      : 'AI_UNKNOWN';
     logError('PHASE_B_FAILED', {
       route: '/api/process/phase-b',
       errorType: 'AI_FATAL',
+      failureCode,
       durationMs: Date.now() - startMs,
     });
     return Response.json(
-      { error: '深度分析生成失败，请稍后重试', code: 500 },
+      { error: aiFailureMessage(failureCode), code: failureCode },
       { status: 500 }
     );
   }

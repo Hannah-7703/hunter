@@ -1,8 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { classifyVoiceFailure, type VoiceFailure } from '@/lib/diagnostics';
+
 interface RecognitionCallbacks {
   onResult: (text: string) => void;
-  onError: (error: string) => void;
+  onError: (failure: VoiceFailure) => void;
   onSilence: () => void;
   onMaxDuration: (text: string) => void;
 }
@@ -20,7 +22,10 @@ export function startRecognition(
   const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
   if (!SpeechRecognitionClass) {
-    callbacks.onError('浏览器不支持语音识别');
+    callbacks.onError({
+      code: 'VOICE_SERVICE_UNAVAILABLE',
+      message: '当前浏览器不支持语音识别，请改为文字输入',
+    });
     return { stop: async () => '', pause() {}, resume() {} };
   }
 
@@ -108,8 +113,10 @@ export function startRecognition(
       callbacks.onResult(getTranscript());
     };
 
-    instance.onerror = () => {
-      if (!stopped) callbacks.onError('语音识别出错，请稍后重试');
+    instance.onerror = (event: { error?: string }) => {
+      const failure = classifyVoiceFailure(event.error);
+      if (stopped || isPaused || !failure) return;
+      callbacks.onError(failure);
     };
 
     instance.onend = () => {
