@@ -954,8 +954,12 @@
 
 /* ===== MindMap Phase 3 v1 — 画布滚动容器 ===== */
 .mindmap-scroll {
+  width: 100%;
+  height: calc(100dvh - 230px - env(safe-area-inset-bottom));
+  min-height: 320px;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   scrollbar-width: none;
   cursor: grab;
   touch-action: none;
