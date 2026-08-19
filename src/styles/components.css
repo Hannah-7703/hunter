@@ -957,6 +957,12 @@
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.mindmap-scroll--panning {
+  cursor: grabbing;
 }
 .mindmap-scroll::-webkit-scrollbar {
   display: none;
