@@ -3,6 +3,7 @@ import localFont from 'next/font/local';
 import Toast from '@/components/ui/Toast';
 import DataPreloader from '@/components/ui/DataPreloader';
 import AuthGate from '@/components/ui/AuthGate';
+import FeedbackButton from '@/components/ui/FeedbackButton';
 import '@/styles/globals.css';
 import '@/styles/components.css';
 
@@ -42,7 +43,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" className={`${dmSerif.variable} ${inter.variable} ${notoSansSC.variable}`}>
-      <body className="font-body"><AuthGate><DataPreloader />{children}</AuthGate><Toast /></body>
+      <body className="font-body"><AuthGate><DataPreloader />{children}<FeedbackButton /></AuthGate><Toast /></body>
     </html>
   );
 }

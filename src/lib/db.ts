@@ -14,6 +14,12 @@ export class DatabaseOperationError extends Error {
   }
 }
 
+export interface CreateAnonymousFeedbackInput {
+  category: string | null;
+  content: string;
+  page: string;
+}
+
 function createSupabaseClient() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -33,6 +39,20 @@ function getSupabaseClient(): ReturnType<typeof createSupabaseClient> {
   }
 
   return supabaseClient;
+}
+
+export async function dbCreateAnonymousFeedback(input: CreateAnonymousFeedbackInput): Promise<void> {
+  const { error } = await getSupabaseClient()
+    .from('feedback')
+    .insert({
+      category: input.category,
+      content: input.content,
+      page: input.page,
+    });
+
+  if (error) {
+    throw new DatabaseOperationError('FEEDBACK_CREATE_FAILED', error.code ?? null);
+  }
 }
 
 // ====== 防御性校验 ======
