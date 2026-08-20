@@ -1,9 +1,13 @@
-type ErrorType = 'UNEXPECTED' | 'AI_UPSTREAM' | 'AI_FATAL';
+type ErrorType = 'UNEXPECTED' | 'AI_UPSTREAM' | 'AI_FATAL' | 'CLIENT_VOICE';
 
 interface LogContext {
   route?: string;
   errorType?: ErrorType;
   databaseCode?: string;
+  failureCode?: string;
+  upstreamStatus?: number;
+  attemptCount?: number;
+  inputLength?: number;
   durationMs?: number;
   nodeCount?: number;
   primaryCount?: number;

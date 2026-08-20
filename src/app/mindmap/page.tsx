@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MindNode as MindNodeType, Note } from '@/shared/types';
 import {
   ensureMindNodes,
@@ -14,6 +14,7 @@ import {
 import {
   buildVisibleEdges,
   computeFocusLayout,
+  fitLayoutToCanvas,
   nodesHash,
   type FocusResult,
 } from '@/lib/mindmapLayout';
@@ -75,6 +76,17 @@ export default function MindMapPage() {
   const [rootDeleteTarget, setRootDeleteTarget] = useState<string | null>(null);
   const [isSavingRoot, setIsSavingRoot] = useState(false);
   const [isDeletingRoot, setIsDeletingRoot] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const panRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    scrollLeft: number;
+    scrollTop: number;
+    moved: boolean;
+    startedOnNode: boolean;
+  } | null>(null);
+  const ignoreNodeClickRef = useRef(false);
 
   const hash = useMemo(() => nodesHash(nodes), [nodes]);
   const readyFocus = focus?.hash === hash && focus.status === 'ready' ? focus.result : null;
@@ -121,8 +133,52 @@ export default function MindMapPage() {
   }
 
   function handleNodeClick(nodeId: string) {
+    if (ignoreNodeClickRef.current) {
+      ignoreNodeClickRef.current = false;
+      return;
+    }
     setSelectedFocusResult(readyFocus);
     setSelectedNodeId(nodeId);
+  }
+
+  function handleCanvasPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    const container = event.currentTarget;
+    panRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: container.scrollLeft,
+      scrollTop: container.scrollTop,
+      moved: false,
+      startedOnNode: (event.target as Element).closest('button') !== null,
+    };
+    container.setPointerCapture(event.pointerId);
+  }
+
+  function handleCanvasPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const pan = panRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+
+    const offsetX = event.clientX - pan.startX;
+    const offsetY = event.clientY - pan.startY;
+    if (!pan.moved && Math.hypot(offsetX, offsetY) < 5) return;
+
+    pan.moved = true;
+    event.currentTarget.scrollLeft = pan.scrollLeft - offsetX;
+    event.currentTarget.scrollTop = pan.scrollTop - offsetY;
+    setIsPanning(true);
+  }
+
+  function handleCanvasPointerEnd(event: React.PointerEvent<HTMLDivElement>) {
+    const pan = panRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    if (pan.moved && pan.startedOnNode) ignoreNodeClickRef.current = true;
+    panRef.current = null;
+    setIsPanning(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   }
 
   async function handleSetRoot(nodeId: string) {
@@ -222,9 +278,11 @@ export default function MindMapPage() {
   }
 
   const focusResult = selectedNodeId ? selectedFocusResult : readyFocus;
-  const layout = focusResult
+  const rawLayout = focusResult
     ? computeFocusLayout(nodes, focusResult, SVG_WIDTH, SVG_HEIGHT)
     : computeScatterLayout(nodes);
+  const fittedLayout = fitLayoutToCanvas(rawLayout, SVG_WIDTH + PAD * 2, SVG_HEIGHT + PAD * 2, PAD);
+  const layout = fittedLayout.layout;
   const visibleEdges = focusResult ? buildVisibleEdges(focusResult) : [];
   const showLines = Boolean(focusResult && linesHash === hash);
 
@@ -275,8 +333,8 @@ export default function MindMapPage() {
     }
   }
 
-  const paddedWidth = SVG_WIDTH + PAD * 2;
-  const paddedHeight = SVG_HEIGHT + PAD * 2;
+  const paddedWidth = fittedLayout.width;
+  const paddedHeight = fittedLayout.height;
 
   return (
     <main className="app-page min-h-[100dvh] pb-[72px] px-[24px]">
@@ -302,7 +360,14 @@ export default function MindMapPage() {
       ) : nodes.length === 0 ? (
         <EmptyState lines={['还没有沉淀的想法', '笔记详情中点击 + 开始沉淀吧']} />
       ) : (
-        <div className="mindmap-scroll" style={{ position: 'relative' }}>
+        <div
+          className={`mindmap-scroll${isPanning ? ' mindmap-scroll--panning' : ''}`}
+          style={{ position: 'relative' }}
+          onPointerDown={handleCanvasPointerDown}
+          onPointerMove={handleCanvasPointerMove}
+          onPointerUp={handleCanvasPointerEnd}
+          onPointerCancel={handleCanvasPointerEnd}
+        >
           <svg
             width={paddedWidth}
             height={paddedHeight}

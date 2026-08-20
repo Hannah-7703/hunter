@@ -5,13 +5,14 @@ const mocks = vi.hoisted(() => ({
   deepseekChat: vi.fn(),
   dbListMindNodes: vi.fn(),
   enrichNodeContexts: vi.fn(),
+  logError: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ validateSession: mocks.validateSession }));
 vi.mock('@/lib/deepseekClient', () => ({ deepseekChat: mocks.deepseekChat }));
 vi.mock('@/lib/db', () => ({ dbListMindNodes: mocks.dbListMindNodes }));
 vi.mock('@/lib/nodeContext', () => ({ enrichNodeContexts: mocks.enrichNodeContexts }));
-vi.mock('@/lib/logger', () => ({ logError: vi.fn(), logInfo: vi.fn() }));
+vi.mock('@/lib/logger', () => ({ logError: mocks.logError, logInfo: vi.fn() }));
 
 import { POST as phaseA } from '@/app/api/process/phase-a/route';
 import { POST as phaseB } from '@/app/api/process/phase-b/route';
@@ -62,6 +63,20 @@ describe('AI call budget', () => {
     const response = await phaseA(request({ content: '', fromVoice: false }));
     expect(response.status).toBe(200);
     expect(mocks.deepseekChat).not.toHaveBeenCalled();
+  });
+
+  it('records only safe metadata when Phase A exhausts its retry budget', async () => {
+    mocks.deepseekChat.mockResolvedValue({ error: { code: 'AI_TIMEOUT' } });
+
+    const response = await phaseA(request({ content: 'test input', fromVoice: false }));
+
+    expect(response.status).toBe(503);
+    expect(mocks.deepseekChat).toHaveBeenCalledTimes(2);
+    expect(mocks.logError).toHaveBeenCalledWith('PHASE_A_AI_FAILED', expect.objectContaining({
+      failureCode: 'AI_TIMEOUT',
+      attemptCount: 2,
+      inputLength: 10,
+    }));
   });
 
   it('calls Focus exactly once when a user manually selects a root', async () => {

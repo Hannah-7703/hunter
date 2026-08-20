@@ -22,6 +22,12 @@ export interface FocusApiResponse {
   backgroundNodes: string[];
 }
 
+export interface FittedLayout {
+  layout: Map<string, { x: number; y: number }>;
+  width: number;
+  height: number;
+}
+
 // ====== 工具函数 ======
 
 function hashCode(str: string): number {
@@ -191,4 +197,36 @@ export function computeFocusLayout(
   }
 
   return layout;
+}
+
+// The layout algorithm is allowed to place distant background groups outside the
+// initial viewport. Fit the whole result into a scrollable, positive-coordinate canvas.
+export function fitLayoutToCanvas(
+  layout: Map<string, { x: number; y: number }>,
+  minimumWidth: number,
+  minimumHeight: number,
+  padding: number,
+): FittedLayout {
+  if (layout.size === 0) {
+    return { layout: new Map(), width: minimumWidth, height: minimumHeight };
+  }
+
+  const positions = [...layout.values()];
+  const minX = Math.min(...positions.map(position => position.x));
+  const minY = Math.min(...positions.map(position => position.y));
+  const maxX = Math.max(...positions.map(position => position.x));
+  const maxY = Math.max(...positions.map(position => position.y));
+  const shiftX = Math.max(0, padding - minX);
+  const shiftY = Math.max(0, padding - minY);
+  const fitted = new Map<string, { x: number; y: number }>();
+
+  for (const [nodeId, position] of layout) {
+    fitted.set(nodeId, { x: position.x + shiftX, y: position.y + shiftY });
+  }
+
+  return {
+    layout: fitted,
+    width: Math.max(minimumWidth, maxX + shiftX + padding),
+    height: Math.max(minimumHeight, maxY + shiftY + padding),
+  };
 }

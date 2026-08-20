@@ -10,10 +10,11 @@ import Button from '@/components/ui/Button';
 import BackButton from '@/components/ui/BackButton';
 import LoadingView from '@/components/ui/LoadingView';
 import { showToast } from '@/components/ui/Toast';
-import { processPhaseA } from '@/lib/deepseek';
+import { getProcessErrorMessage, processPhaseA } from '@/lib/deepseek';
 import { createNote } from '@/lib/store';
 import { startRecognition } from '@/lib/recorder';
 import { upsertCachedNote } from '@/lib/clientDataCache';
+import { reportVoiceFailure } from '@/lib/clientDiagnostics';
 
 const DRAFT_KEY = 'hunter_draft';
 const MAX_LENGTH = 3000;
@@ -46,6 +47,9 @@ export default function CapturePage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const transcriptRef = useRef('');
   const stoppingManually = useRef(false);
+  const recordingActiveRef = useRef(false);
+  const recordingSessionRef = useRef(0);
+  const [showDiscardTranscriptConfirm, setShowDiscardTranscriptConfirm] = useState(false);
 
   function clearDraft() {
     try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
@@ -57,8 +61,36 @@ export default function CapturePage() {
 
   // ===== Recording =====
 
+  function clearRecordingTimer() {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }
+
+  function startRecordingTimer() {
+    clearRecordingTimer();
+    timerRef.current = setInterval(() => {
+      setElapsed(prev => prev + 1);
+    }, 1000);
+  }
+
+  function resetRecordingSession(stopRecognizer = true) {
+    recordingSessionRef.current += 1;
+    recordingActiveRef.current = false;
+    clearRecordingTimer();
+    if (stopRecognizer) recorderRef.current?.stop();
+    recorderRef.current = null;
+    setIsRecording(false);
+    setIsPaused(false);
+  }
+
   function startRecording() {
+    if (recordingActiveRef.current) return;
+    resetRecordingSession();
+    const sessionId = recordingSessionRef.current;
     stoppingManually.current = false;
+    recordingActiveRef.current = true;
     setPageState('recording');
     setIsRecording(true);
     setIsPaused(false);
@@ -66,62 +98,65 @@ export default function CapturePage() {
     transcriptRef.current = '';
 
     recorderRef.current = startRecognition('zh-CN', {
-      onResult: (t) => { transcriptRef.current = t; },
-      onError: (err) => {
-        if (stoppingManually.current) return;
-        showToast(err, 'error');
-        setIsRecording(false);
+      onResult: (t) => {
+        if (sessionId === recordingSessionRef.current) transcriptRef.current = t;
+      },
+      onError: (failure) => {
+        if (sessionId !== recordingSessionRef.current || stoppingManually.current) return;
+        reportVoiceFailure(failure.code);
+        resetRecordingSession();
+        setElapsed(0);
+        showToast(failure.message, 'error');
         setPageState('split');
       },
       onSilence: () => {
+        if (sessionId !== recordingSessionRef.current) return;
         showToast('录音已达 5 分钟上限', 'error');
-        setIsRecording(false);
-        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+        resetRecordingSession();
       },
       onMaxDuration: (finalText: string) => {
-        setIsRecording(false);
-        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+        if (sessionId !== recordingSessionRef.current) return;
+        resetRecordingSession(false);
         openTranscriptReview(finalText);
       },
     });
 
-    timerRef.current = setInterval(() => {
-      setElapsed(prev => prev + 1);
-    }, 1000);
+    startRecordingTimer();
   }
 
   function togglePause() {
-    if (!recorderRef.current) return;
-    if (!isRecording && !isPaused) {
+    if (!recorderRef.current || !recordingActiveRef.current) {
       startRecording();
       return;
     }
     if (isPaused) {
       recorderRef.current.resume();
       setIsPaused(false);
-      timerRef.current = setInterval(() => {
-        setElapsed(prev => prev + 1);
-      }, 1000);
+      startRecordingTimer();
     } else {
       recorderRef.current.pause();
       setIsPaused(true);
-      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      clearRecordingTimer();
     }
   }
 
   async function stopRecording() {
     if (stoppingManually.current) return;
     stoppingManually.current = true;
+    recordingActiveRef.current = false;
+    clearRecordingTimer();
     const finalTranscript = await recorderRef.current?.stop();
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    recorderRef.current = null;
     const transcript = (finalTranscript ?? transcriptRef.current).trim();
     if (!transcript) {
       setIsRecording(false);
+      setIsPaused(false);
       setElapsed(0);
       showToast('未检测到有效声音', 'error');
       return;
     }
     setIsRecording(false);
+    setIsPaused(false);
     openTranscriptReview(transcript);
   }
 
@@ -166,14 +201,21 @@ export default function CapturePage() {
     }
     setPageState('processing');
     clearDraft();
+    let result;
     try {
-      const result = await processPhaseA({ content: trimmed, fromVoice });
-      if (!result.hasSubstance) {
-        setPageState('split');
-        setText('');
-        showToast('暂未从中提炼出明确观点', 'error');
-        return;
-      }
+      result = await processPhaseA({ content: trimmed, fromVoice });
+    } catch (error) {
+      setPageState('split');
+      showToast(getProcessErrorMessage(error), 'error');
+      return;
+    }
+    if (!result.hasSubstance) {
+      setPageState('split');
+      setText('');
+      showToast('暂未从中提炼出明确观点', 'error');
+      return;
+    }
+    try {
       const note = await createNote({
         title: result.title,
         fromVoice,
@@ -186,7 +228,7 @@ export default function CapturePage() {
       router.push(`/notes/${note.id}?from=capture`);
     } catch {
       setPageState('split');
-      showToast('AI 整理失败，请稍后重试', 'error');
+      showToast('整理完成，但保存失败，请稍后重试', 'error');
     }
   }
 
@@ -195,7 +237,7 @@ export default function CapturePage() {
   useEffect(() => {
     return () => {
       recorderRef.current?.stop();
-      if (timerRef.current) clearInterval(timerRef.current);
+      clearRecordingTimer();
     };
   }, []);
 
@@ -214,9 +256,7 @@ export default function CapturePage() {
       <main className="capture-page min-h-[100dvh] flex flex-col px-[24px]">
         <div className="pt-[var(--space-48)] pb-[var(--space-16)]">
           <BackButton onClick={() => {
-            recorderRef.current?.stop();
-            if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-            setIsRecording(false);
+            resetRecordingSession();
             setPageState('split');
           }} />
         </div>
@@ -272,7 +312,10 @@ export default function CapturePage() {
   if (pageState === 'transcriptReview') {
     return (
       <main className="capture-page min-h-[100dvh] flex flex-col px-[24px]">
-        <p className="transcript-review-hint pt-[var(--space-48)] pb-[var(--space-24)]">
+        <div className="pt-[var(--space-48)] pb-[var(--space-16)]">
+          <BackButton onClick={() => setShowDiscardTranscriptConfirm(true)} />
+        </div>
+        <p className="transcript-review-hint pb-[var(--space-24)]">
           请确认转写原文，提交后 AI 将据此原文进行提炼分析
         </p>
         <div className="flex-1 flex flex-col min-h-0">
@@ -290,6 +333,26 @@ export default function CapturePage() {
             开始整理吧
           </Button>
         </div>
+        {showDiscardTranscriptConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-[24px]">
+            <div className="w-full max-w-[360px] bg-[var(--surface)] p-[24px] shadow-lg">
+              <h2 className="text-[18px] text-[var(--text-primary)] mb-[var(--space-8)]">放弃本次转写并返回？</h2>
+              <p className="text-[14px] text-[var(--text-hint)] mb-[var(--space-24)]">本次录音转写内容不会保存。</p>
+              <div className="grid grid-cols-2 gap-[12px]">
+                <Button className="bg-[var(--surface-muted)] text-[var(--text-primary)]" onClick={() => setShowDiscardTranscriptConfirm(false)}>取消</Button>
+                <Button onClick={() => {
+                  resetRecordingSession();
+                  clearDraft();
+                  transcriptRef.current = '';
+                  setText('');
+                  setElapsed(0);
+                  setShowDiscardTranscriptConfirm(false);
+                  setPageState('split');
+                }}>放弃并返回</Button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     );
   }
@@ -318,7 +381,7 @@ export default function CapturePage() {
               <circle cx="35.2" cy="35.7" r="1.6" fill="currentColor" />
             </svg>
           </div>
-          <h1 className="page-title">Hunter</h1>
+          <h1 className="page-title">Aha Hunter</h1>
         </div>
         <p className="capture-subtitle">把一闪而过的想法留住</p>
       </div>

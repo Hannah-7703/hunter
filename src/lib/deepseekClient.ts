@@ -1,3 +1,5 @@
+import type { AiFailureCode } from '@/lib/diagnostics';
+
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
 
 export interface DeepSeekOptions {
@@ -9,7 +11,7 @@ export interface DeepSeekOptions {
 
 export type DeepSeekResult =
   | { content: string }
-  | { error: string };
+  | { error: { code: AiFailureCode; upstreamStatus?: number } };
 
 export async function deepseekChat(
   messages: { role: string; content: string }[],
@@ -17,7 +19,7 @@ export async function deepseekChat(
 ): Promise<DeepSeekResult> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    return { error: 'DEEPSEEK_API_KEY 未配置' };
+    return { error: { code: 'AI_CONFIG_MISSING' } };
   }
 
   const controller = new AbortController();
@@ -41,7 +43,7 @@ export async function deepseekChat(
     });
 
     if (!res.ok) {
-      return { error: `DeepSeek API 返回状态码 ${res.status}` };
+      return { error: { code: 'AI_UPSTREAM_HTTP', upstreamStatus: res.status } };
     }
 
     const data = (await res.json()) as {
@@ -50,15 +52,15 @@ export async function deepseekChat(
 
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
-      return { error: 'DeepSeek 返回内容为空' };
+      return { error: { code: 'AI_EMPTY_RESPONSE' } };
     }
 
     return { content };
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      return { error: 'DeepSeek API 请求超时' };
+      return { error: { code: 'AI_TIMEOUT' } };
     }
-    return { error: `DeepSeek API 请求失败: ${String(err)}` };
+    return { error: { code: 'AI_NETWORK' } };
   } finally {
     clearTimeout(timeout);
   }

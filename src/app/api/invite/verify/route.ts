@@ -1,4 +1,4 @@
-import { dbVerifyInviteCode } from '@/lib/db';
+import { DatabaseOperationError, dbVerifyInviteCode } from '@/lib/db';
 import { createSession, setSessionCookie } from '@/lib/auth';
 import { logError } from '@/lib/logger';
 
@@ -16,7 +16,7 @@ export async function POST(request: Request): Promise<Response> {
     const cleaned = code
       .trim()
       .toUpperCase()
-      .replace(/[^ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789]/g, '');
+      .replace(/[^A-Z0-9]/g, '');
 
     if (!cleaned) {
       return Response.json(
@@ -40,11 +40,15 @@ export async function POST(request: Request): Promise<Response> {
     setSessionCookie(headers, token);
 
     return Response.json({ success: true }, { headers });
-  } catch {
-    logError('INVITE_VERIFY_FAILED', { route: '/api/invite/verify', errorType: 'UNEXPECTED' });
+  } catch (error) {
+    logError('INVITE_VERIFY_FAILED', {
+      route: '/api/invite/verify',
+      errorType: 'UNEXPECTED',
+      databaseCode: error instanceof DatabaseOperationError ? error.databaseCode ?? undefined : undefined,
+    });
     return Response.json(
-      { success: false, error: '邀请码错误，认证失败', code: 'INVITE_INVALID' },
-      { status: 500 }
+      { success: false, error: '服务暂时不可用，请稍后重试', code: 'INVITE_UNAVAILABLE' },
+      { status: 503 }
     );
   }
 }

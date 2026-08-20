@@ -161,6 +161,36 @@ describe('session and account isolation', () => {
     expect(mocks.createSession).not.toHaveBeenCalled();
   });
 
+  it('preserves zero and one when verifying an invite code', async () => {
+    mocks.dbVerifyInviteCode.mockResolvedValue('user-id');
+    mocks.createSession.mockResolvedValue('session-token');
+
+    const response = await verifyInvite(request('http://test.local/api/invite/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'a0b1' }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.dbVerifyInviteCode).toHaveBeenCalledWith('A0B1');
+  });
+
+  it('returns a service error when invite lookup fails', async () => {
+    mocks.dbVerifyInviteCode.mockRejectedValue(
+      new mocks.DatabaseOperationError('INVITE_LOOKUP_BY_HASH_FAILED', '42501'),
+    );
+
+    const response = await verifyInvite(request('http://test.local/api/invite/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'TEST' }),
+    }));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ code: 'INVITE_UNAVAILABLE' });
+    expect(mocks.createSession).not.toHaveBeenCalled();
+  });
+
   it('does not republish a slow previous-session notes request after cache clear', async () => {
     const slow = deferred<Array<{ id: string }>>();
     mocks.listNotes.mockReturnValueOnce(slow.promise).mockResolvedValueOnce([{ id: 'new-note' }]);

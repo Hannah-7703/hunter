@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nodesHash } from '@/lib/mindmapLayout';
+import { fitLayoutToCanvas, nodesHash } from '@/lib/mindmapLayout';
 import type { MindNode } from '@/shared/types';
 
 function makeNode(id: string, label: string): MindNode {
@@ -46,5 +46,22 @@ describe('nodesHash', () => {
   it('空数组 → 返回 hash', () => {
     expect(nodesHash([])).toBeTruthy();
     expect(typeof nodesHash([])).toBe('string');
+  });
+});
+
+describe('fitLayoutToCanvas', () => {
+  it('keeps distant background nodes inside a positive, scrollable canvas', () => {
+    const raw = new Map([
+      ['root', { x: 360, y: 414 }],
+      ['far-left', { x: -180, y: 120 }],
+      ['far-bottom', { x: 900, y: 1280 }],
+    ]);
+
+    const fitted = fitLayoutToCanvas(raw, 880, 1060, 80);
+
+    expect([...fitted.layout.values()].every(position => position.x >= 80 && position.y >= 80)).toBe(true);
+    expect([...fitted.layout.values()].every(position => position.x <= fitted.width - 80 && position.y <= fitted.height - 80)).toBe(true);
+    expect(fitted.width).toBeGreaterThanOrEqual(1060);
+    expect(fitted.height).toBeGreaterThanOrEqual(1060);
   });
 });

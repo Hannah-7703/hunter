@@ -2,6 +2,7 @@ import { SYSTEM_PROMPT_PHASE_A, buildUserPromptPhaseA } from '@/lib/prompts';
 import { deepseekChat } from '@/lib/deepseekClient';
 import { validateSession } from '@/lib/auth';
 import { logError } from '@/lib/logger';
+import type { AiFailureCode } from '@/lib/diagnostics';
 import type { ProcessResponse, KeyPoint } from '@/shared/types';
 
 function stripMarkdownCodeBlock(text: string): string {
@@ -21,6 +22,14 @@ function truncateTitle(text: string): string {
   return text.length > 20 ? text.slice(0, 20) : text;
 }
 
+class AiResponseParseError extends Error {}
+
+function aiFailureMessage(code: AiFailureCode): string {
+  if (code === 'AI_TIMEOUT') return 'AI 整理响应超时，请稍后重试';
+  if (code === 'AI_INVALID_RESPONSE') return 'AI 返回结果异常，请稍后重试';
+  return 'AI 整理暂时不可用，请稍后重试';
+}
+
 function safeParsePhaseAResponse(raw: string): ProcessResponse {
   const defaults: ProcessResponse = {
     title: '',
@@ -34,7 +43,7 @@ function safeParsePhaseAResponse(raw: string): ProcessResponse {
   try {
     json = JSON.parse(stripMarkdownCodeBlock(raw));
   } catch {
-    throw new Error('AI 返回的 JSON 解析失败');
+    throw new AiResponseParseError();
   }
 
   const hasSubstance = Boolean(json.hasSubstance);
@@ -68,7 +77,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const ctx = await validateSession(request);
     if (!ctx) {
-      return Response.json({ error: '未认证', code: 401 }, { status: 401 });
+      return Response.json({ error: '未认证', code: 'SESSION_INVALID' }, { status: 401 });
     }
 
     const { content, fromVoice = false } = (await request.json()) as {
@@ -115,11 +124,15 @@ export async function POST(request: Request): Promise<Response> {
       logError('PHASE_A_AI_FAILED', {
         route: '/api/process/phase-a',
         errorType: 'AI_UPSTREAM',
+        failureCode: result.error.code,
+        upstreamStatus: result.error.upstreamStatus,
+        attemptCount: 2,
+        inputLength: text.length,
         durationMs: Date.now() - startMs,
       });
       return Response.json(
-        { error: 'AI 整理失败，请稍后重试', code: 500 },
-        { status: 500 }
+        { error: aiFailureMessage(result.error.code), code: result.error.code },
+        { status: 503 }
       );
     }
 
@@ -127,14 +140,18 @@ export async function POST(request: Request): Promise<Response> {
     parsed.original = parsed.original || text;
 
     return Response.json(parsed);
-  } catch {
+  } catch (error) {
+    const failureCode: AiFailureCode = error instanceof AiResponseParseError
+      ? 'AI_INVALID_RESPONSE'
+      : 'AI_UNKNOWN';
     logError('PHASE_A_FAILED', {
       route: '/api/process/phase-a',
       errorType: 'AI_FATAL',
+      failureCode,
       durationMs: Date.now() - startMs,
     });
     return Response.json(
-      { error: 'AI 整理失败，请稍后重试', code: 500 },
+      { error: aiFailureMessage(failureCode), code: failureCode },
       { status: 500 }
     );
   }

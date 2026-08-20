@@ -3,6 +3,7 @@ import { enrichNodeContexts, type EnrichedNodeContext } from '@/lib/nodeContext'
 import { deepseekChat } from '@/lib/deepseekClient';
 import { validateSession } from '@/lib/auth';
 import { logError, logInfo } from '@/lib/logger';
+import type { AiFailureCode } from '@/lib/diagnostics';
 
 interface FocusRequestNode {
   id: string;
@@ -28,6 +29,21 @@ interface PreviousFocusInput {
   primaryRelated: string[];
   secondaryRelated: string[];
   backgroundNodes: string[];
+}
+
+function logFocusAiFailure(
+  failureCode: AiFailureCode,
+  nodeCount: number,
+  upstreamStatus?: number,
+): void {
+  logError('MIND_NODE_FOCUS_AI_FAILED', {
+    route: '/api/mind-nodes/focus',
+    errorType: 'AI_UPSTREAM',
+    failureCode,
+    upstreamStatus,
+    attemptCount: 1,
+    nodeCount,
+  });
 }
 
 // ====== 格式化上下文 ======
@@ -271,7 +287,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const ctx = await validateSession(request);
     if (!ctx) {
-      return Response.json({ error: '未认证', code: 401 }, { status: 401 });
+      return Response.json({ error: '未认证', code: 'SESSION_INVALID' }, { status: 401 });
     }
 
     const body = (await request.json()) as {
@@ -346,14 +362,16 @@ export async function POST(request: Request): Promise<Response> {
         );
 
         if ('error' in result) {
-          return Response.json({ error: '脑图结构分析失败', code: 500 }, { status: 500 });
+          logFocusAiFailure(result.error.code, resolvedNodes.length, result.error.upstreamStatus);
+          return Response.json({ error: '脑图结构分析暂时不可用', code: result.error.code }, { status: 503 });
         }
 
         let parsed: Record<string, unknown>;
         try {
           parsed = JSON.parse(result.content.trim());
         } catch {
-          return Response.json({ error: '脑图结构分析失败', code: 500 }, { status: 500 });
+          logFocusAiFailure('AI_INVALID_RESPONSE', resolvedNodes.length);
+          return Response.json({ error: '脑图结构分析返回异常，请稍后重试', code: 'AI_INVALID_RESPONSE' }, { status: 500 });
         }
 
         const nodeIdSet = new Set(resolvedNodes.map(n => n.id));
@@ -433,14 +451,16 @@ export async function POST(request: Request): Promise<Response> {
     );
 
     if ('error' in result) {
-      return Response.json({ error: '脑图结构分析失败', code: 500 }, { status: 500 });
+      logFocusAiFailure(result.error.code, resolvedNodes.length, result.error.upstreamStatus);
+      return Response.json({ error: '脑图结构分析暂时不可用', code: result.error.code }, { status: 503 });
     }
 
     let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(result.content.trim());
     } catch {
-      return Response.json({ error: '脑图结构分析失败', code: 500 }, { status: 500 });
+      logFocusAiFailure('AI_INVALID_RESPONSE', resolvedNodes.length);
+      return Response.json({ error: '脑图结构分析返回异常，请稍后重试', code: 'AI_INVALID_RESPONSE' }, { status: 500 });
     }
 
     const nodeIdSet = new Set(resolvedNodes.map(n => n.id));
@@ -497,6 +517,7 @@ export async function POST(request: Request): Promise<Response> {
     logError('MIND_NODE_FOCUS_FAILED', {
       route: '/api/mind-nodes/focus',
       errorType: 'UNEXPECTED',
+      failureCode: 'AI_UNKNOWN',
     });
     return Response.json({ error: '服务暂时不可用', code: 500 }, { status: 500 });
   }
