@@ -131,6 +131,10 @@ export default function MindMapPage() {
   }
 
   function handleNodeClick(nodeId: string) {
+    if (ignoreNodeClickRef.current) {
+      ignoreNodeClickRef.current = false;
+      return;
+    }
     setSelectedFocusResult(readyFocus);
     setSelectedNodeId(nodeId);
   }
