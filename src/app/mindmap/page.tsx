@@ -84,9 +84,7 @@ export default function MindMapPage() {
     scrollLeft: number;
     scrollTop: number;
     moved: boolean;
-    startedOnNode: boolean;
   } | null>(null);
-  const ignoreNodeClickRef = useRef(false);
 
   const hash = useMemo(() => nodesHash(nodes), [nodes]);
   const readyFocus = focus?.hash === hash && focus.status === 'ready' ? focus.result : null;
@@ -133,16 +131,14 @@ export default function MindMapPage() {
   }
 
   function handleNodeClick(nodeId: string) {
-    if (ignoreNodeClickRef.current) {
-      ignoreNodeClickRef.current = false;
-      return;
-    }
     setSelectedFocusResult(readyFocus);
     setSelectedNodeId(nodeId);
   }
 
   function handleCanvasPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if ((event.target as Element).closest('button')) return;
+
     const container = event.currentTarget;
     panRef.current = {
       pointerId: event.pointerId,
@@ -151,7 +147,6 @@ export default function MindMapPage() {
       scrollLeft: container.scrollLeft,
       scrollTop: container.scrollTop,
       moved: false,
-      startedOnNode: (event.target as Element).closest('button') !== null,
     };
     container.setPointerCapture(event.pointerId);
   }
@@ -173,7 +168,6 @@ export default function MindMapPage() {
   function handleCanvasPointerEnd(event: React.PointerEvent<HTMLDivElement>) {
     const pan = panRef.current;
     if (!pan || pan.pointerId !== event.pointerId) return;
-    if (pan.moved && pan.startedOnNode) ignoreNodeClickRef.current = true;
     panRef.current = null;
     setIsPanning(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
