@@ -1,8 +1,9 @@
-import { createMindNode, deleteMindNode, listMindNodes } from './api';
+import { createMindNode, listMindNodes } from './api';
 import {
   addCachedMindNode,
-  removeCachedMindNode,
-  syncMindNodesAndPrepareFocus,
+  appendMindmapNode,
+  deleteNodeFromCache,
+  markMindmapNodeEverAdded,
 } from './clientDataCache';
 import { showToast } from '@/components/ui/Toast';
 
@@ -28,8 +29,7 @@ export async function toggleMindNode(
       const nodes = await listMindNodes();
       const target = nodes.find(n => n.itemId === itemId && n.noteId === noteId);
       if (target) {
-        await deleteMindNode(target.id);
-        removeCachedMindNode(target.id);
+        await deleteNodeFromCache(target.id);
       }
 
       const next = new Set(currentIds);
@@ -58,11 +58,14 @@ export async function toggleMindNode(
     });
 
     addCachedMindNode(createdNode);
-    void syncMindNodesAndPrepareFocus();
+    void markMindmapNodeEverAdded();
+    // 新观点只和当前根节点做增量关联判断；不重算旧聚合图。
+    void appendMindmapNode(createdNode.id);
 
     const next = new Set(currentIds);
     next.add(itemId);
-    showToast('已加入脑图', 'success');
+    // 成功提示由 AI Notes 页根据「总沉淀数」决定：
+    // 未达到可聚合数量时展示进度引导，达到后才展示“已加入脑图”。
     onSuccess?.();
     return next;
   } catch {

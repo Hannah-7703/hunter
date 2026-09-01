@@ -40,12 +40,14 @@ export async function PUT(request: Request): Promise<Response> {
         secondaryRelated: string[];
         backgroundNodes: string[];
       } | null;
+      hasEverAddedMindNode?: boolean;
     };
 
     await dbUpsertMindmapPreferences(ctx, {
       manualRootNodeId: body.manualRootNodeId,
       excludedNodeIds: body.excludedNodeIds,
       focusResult: body.focusResult,
+      hasEverAddedMindNode: body.hasEverAddedMindNode,
     });
 
     return Response.json({ success: true });

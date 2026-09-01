@@ -434,6 +434,100 @@
   flex-shrink: 0;
   transition: transform 200ms ease, background 200ms ease, color 200ms ease;
 }
+
+/* ===== First mind-node guidance ===== */
+.first-node-guide-target {
+  position: relative;
+  display: inline-flex;
+  z-index: 2;
+}
+.first-node-guide-tooltip {
+  position: absolute;
+  z-index: 8;
+  right: -8px;
+  bottom: calc(100% + 16px);
+  width: 210px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: left;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: first-node-guide-text-in 240ms cubic-bezier(0.23, 1, 0.32, 1) 900ms both;
+}
+.first-node-guide-magnifier {
+  position: absolute;
+  z-index: 0;
+  inset: -17px;
+  border: 1px solid rgba(76, 89, 49, .28);
+  border-radius: 50%;
+  background: rgba(255, 252, 248, .72);
+  box-shadow: 0 4px 12px rgba(43, 58, 48, .12);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(.95);
+  animation: first-node-guide-magnifier-in 280ms cubic-bezier(0.23, 1, 0.32, 1) 300ms both;
+}
+.first-node-guide-target .plus-btn {
+  position: relative;
+  z-index: 1;
+  animation: first-node-guide-plus-focus 280ms cubic-bezier(0.23, 1, 0.32, 1) 300ms both;
+}
+.first-node-guide-finger {
+  position: absolute;
+  z-index: 3;
+  right: -25px;
+  top: 50%;
+  width: 45px;
+  overflow: visible;
+  fill: #fffdf8;
+  stroke: var(--text-primary);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+  filter: drop-shadow(0 2px 3px rgba(43, 58, 48, .18));
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-2%) rotate(-20deg);
+  animation: first-node-guide-finger-tap 1.1s cubic-bezier(0.77, 0, 0.175, 1) 900ms infinite;
+}
+.mindmap-first-nudge {
+  position: fixed;
+  z-index: 30;
+  right: 24px;
+  bottom: calc(env(safe-area-inset-bottom) + 78px);
+  left: 24px;
+  max-width: 340px;
+  margin: auto;
+  padding: 12px 15px;
+  border-radius: 15px;
+  background: rgba(43, 58, 48, .92);
+  box-shadow: 0 10px 24px rgba(43, 58, 48, .22);
+  color: #fff;
+  animation: mindmap-nudge-in 240ms ease-out both;
+}
+.mindmap-first-nudge strong,
+.mindmap-first-nudge span { display: block; }
+.mindmap-first-nudge strong { margin-bottom: 3px; font-size: 13px; font-weight: 500; }
+.mindmap-first-nudge span { font-size: 12px; line-height: 1.45; opacity: .92; }
+@keyframes first-node-guide-magnifier-in { to { opacity: 1; transform: scale(1); } }
+@keyframes first-node-guide-plus-focus { to { transform: scale(1.16); } }
+@keyframes first-node-guide-text-in { to { opacity: 1; transform: translateY(0); } }
+@keyframes first-node-guide-finger-tap {
+  0% { opacity: 0; transform: translateY(-18%) rotate(-20deg); }
+  18%, 72% { opacity: 1; }
+  45% { opacity: 1; transform: translateY(6%) rotate(-20deg) scale(.96); }
+  100% { opacity: 0; transform: translateY(-18%) rotate(-20deg); }
+}
+@keyframes mindmap-nudge-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .first-node-guide-magnifier,
+  .first-node-guide-target .plus-btn,
+  .first-node-guide-tooltip,
+  .first-node-guide-finger { animation-duration: 1ms; animation-iteration-count: 1; }
+}
 .plus-btn:active {
   transform: scale(.85);
 }
@@ -972,6 +1066,212 @@
   display: none;
 }
 
+.mindmap-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.mindmap-title-row .page-title {
+  padding: 0;
+}
+.mindmap-demo-entry {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-hint);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* ===== Mindmap read-only onboarding demo ===== */
+.mindmap-demo {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+.mindmap-demo-topbar {
+  padding: calc(env(safe-area-inset-top) + 24px) 24px 12px;
+  color: var(--text-hint);
+  font-size: 12px;
+  text-align: center;
+}
+.mindmap-demo-scene {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 12px 20px 96px;
+}
+.mindmap-demo-scene--note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: mindmap-demo-fade-in 220ms ease-out;
+}
+.mindmap-demo-note-card {
+  width: min(100%, 390px);
+  padding: 22px 18px;
+  border: 1px solid rgba(76, 89, 49, .12);
+  border-radius: 18px;
+  background: #F8F9F5;
+  box-shadow: 0 10px 24px rgba(43, 58, 48, .08);
+}
+.mindmap-demo-note-eyebrow,
+.mindmap-demo-overlay-eyebrow {
+  margin: 0 0 8px;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .05em;
+}
+.mindmap-demo-note-card h2 {
+  margin: 0 0 18px;
+  font-size: 19px;
+  font-weight: 500;
+}
+.mindmap-demo-note-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #fff;
+}
+.mindmap-demo-note-item > div { flex: 1; }
+.mindmap-demo-note-item strong,
+.mindmap-demo-note-item span { display: block; }
+.mindmap-demo-note-item strong { font-size: 15px; font-weight: 500; }
+.mindmap-demo-note-item > div > span { margin-top: 6px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.mindmap-demo-plus {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--brand);
+  border-radius: 50%;
+  color: var(--brand);
+  font-size: 21px;
+  animation: mindmap-demo-plus-pulse 700ms ease-in-out infinite alternate;
+}
+.mindmap-demo-plus--done {
+  background: var(--brand);
+  color: #fff;
+  animation: mindmap-demo-plus-confirm 420ms ease-out both;
+}
+.mindmap-demo-added-toast {
+  width: max-content;
+  margin: 16px auto 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(43, 58, 48, .9);
+  color: #fff;
+  font-size: 13px;
+  animation: mindmap-demo-toast-in 220ms ease-out both;
+}
+.mindmap-demo-graph {
+  position: relative;
+  width: min(100%, 460px);
+  height: 100%;
+  min-height: 480px;
+  margin: 0 auto;
+}
+.mindmap-demo-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.mindmap-demo-edges line {
+  stroke: #C7CEC8;
+  stroke-width: .38;
+  opacity: 1;
+  transition: opacity 700ms ease 500ms;
+}
+.mindmap-demo-graph--building .mindmap-demo-edges line { opacity: 0; }
+.mindmap-demo-node {
+  position: absolute;
+  width: 106px;
+  padding: 9px 8px;
+  border: 1px solid rgba(76, 89, 49, .18);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 14px rgba(43, 58, 48, .08);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  transition: left 1250ms cubic-bezier(.2,.75,.2,1), top 1250ms cubic-bezier(.2,.75,.2,1), border-color 220ms ease, box-shadow 220ms ease;
+}
+.mindmap-demo-node > span > span { display: block; }
+.mindmap-demo-node small { display: block; margin-top: 5px; color: var(--text-hint); font-size: 9px; line-height: 1.25; }
+.mindmap-demo-node--root {
+  width: 132px;
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+}
+.mindmap-demo-node--cross-note {
+  border: 2px dashed var(--brand);
+  box-shadow: 0 0 0 4px rgba(107, 122, 114, .10);
+}
+.mindmap-demo-overlay-card {
+  position: absolute;
+  right: 6px;
+  bottom: 16px;
+  left: 6px;
+  padding: 16px;
+  border: 1px solid rgba(76, 89, 49, .16);
+  border-radius: 18px;
+  background: rgba(255, 252, 248, .97);
+  box-shadow: 0 12px 30px rgba(43, 58, 48, .14);
+  animation: mindmap-demo-overlay-in 300ms ease-out both;
+}
+.mindmap-demo-overlay-card h3 { margin: 0 0 10px; font-size: 16px; font-weight: 500; }
+.mindmap-demo-overlay-window { height: 70px; overflow: hidden; }
+.mindmap-demo-overlay-list {
+  animation: mindmap-demo-list-scroll 2.2s ease-in-out .7s both;
+}
+.mindmap-demo-overlay-list p { margin: 0 0 12px; }
+.mindmap-demo-overlay-list b,
+.mindmap-demo-overlay-list span { display: block; }
+.mindmap-demo-overlay-list b { color: var(--text-hint); font-size: 10px; font-weight: 500; }
+.mindmap-demo-overlay-list span { margin-top: 3px; color: var(--text-secondary); font-size: 13px; }
+.mindmap-demo-overlay-hint {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid rgba(76, 89, 49, .12);
+  color: var(--brand);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.mindmap-demo-actions {
+  position: absolute;
+  right: 24px;
+  bottom: calc(env(safe-area-inset-bottom) + 20px);
+  left: 24px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mindmap-demo-actions button { width: 100%; height: 44px; border-radius: 12px; font-size: 14px; cursor: pointer; }
+.mindmap-demo-watch { border: 0; background: var(--brand); color: #fff; }
+.mindmap-demo-close { border: 0; background: transparent; color: var(--text-hint); }
+@keyframes mindmap-demo-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes mindmap-demo-plus-pulse { to { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(107, 122, 114, .10); } }
+@keyframes mindmap-demo-plus-confirm { 0% { transform: scale(1.14); } 100% { transform: scale(1); } }
+@keyframes mindmap-demo-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes mindmap-demo-overlay-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes mindmap-demo-list-scroll { 0%, 22% { transform: translateY(0); } 58%, 100% { transform: translateY(-50px); } }
+
 .mindmap-preparing {
   position: absolute;
   inset: 0;
@@ -1005,6 +1305,23 @@
 }
 .mindmap-preparing-dots span:nth-child(2) { animation-delay: 120ms; }
 .mindmap-preparing-dots span:nth-child(3) { animation-delay: 240ms; }
+.mindmap-update-status {
+  position: sticky;
+  left: 50%;
+  bottom: 16px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 0 auto 16px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(43, 58, 48, .86);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
 @keyframes mindmap-dot-pulse {
   0%, 100% { transform: scale(.7); opacity: .45; }
   50% { transform: scale(1); opacity: 1; }
@@ -1469,4 +1786,627 @@
 }
 .export-btn:hover {
   background: #4C5931;
+}
+
+/* ===== 脑图区域内三页体验示例 ===== */
+.mindmap-demo {
+  position: relative;
+  z-index: 1;
+  inset: auto;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  height: calc(100dvh - 184px - env(safe-area-inset-bottom));
+  min-height: 420px;
+  overflow: hidden;
+  background: var(--bg-page);
+  color: var(--text-primary);
+}
+.mindmap-demo-close-icon {
+  position: absolute;
+  z-index: 4;
+  top: 10px;
+  right: 0;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(112, 122, 116, .12);
+  color: var(--text-secondary);
+  font-size: 29px;
+  font-weight: 200;
+  line-height: 1;
+  cursor: pointer;
+}
+.mindmap-demo-viewport { flex: 1; min-height: 0; overflow: hidden; }
+.mindmap-demo-track {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transition: transform 480ms cubic-bezier(.22,.72,.2,1);
+}
+.mindmap-demo-slide {
+  position: relative;
+  box-sizing: border-box;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.mindmap-demo-pagination {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 0 18px;
+}
+.mindmap-demo-pagination span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(107, 122, 114, .25);
+  transition: width 220ms ease, background 220ms ease;
+}
+.mindmap-demo-pagination .is-active { width: 18px; background: var(--brand); }
+
+/* 第 1 页：真实 AI Notes 的沉淀动作 */
+.mindmap-demo-note-page { padding: 24px 0 18px; }
+.mindmap-demo-note-title { margin: 0 0 22px; color: var(--text-primary); font-family: var(--font-heading), var(--font-cjk), sans-serif; font-size: 22px; }
+.mindmap-demo-source-card,
+.mindmap-demo-points-card {
+  margin-bottom: 14px;
+  padding: 18px;
+  border: 1px solid rgba(76, 89, 49, .08);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, .48);
+}
+.mindmap-demo-section-label { margin: 0 0 15px; color: var(--text-hint); font-size: 12px; }
+.mindmap-demo-source-card > p:last-child { margin: 0; color: var(--text-secondary); font-family: var(--font-heading), var(--font-cjk), sans-serif; font-size: 13px; line-height: 1.7; }
+.mindmap-demo-points-card { padding-bottom: 12px; }
+.mindmap-demo-point-row {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 68px;
+  padding: 12px 10px 12px 14px;
+  border: 1px solid rgba(76, 89, 49, .1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .74);
+}
+.mindmap-demo-point-row + .mindmap-demo-point-row { margin-top: 10px; }
+.mindmap-demo-point-row > div { min-width: 0; flex: 1; }
+.mindmap-demo-point-row b,
+.mindmap-demo-point-row span { display: block; }
+.mindmap-demo-point-row b { font-family: var(--font-heading), var(--font-cjk), sans-serif; font-size: 14px; font-weight: 500; }
+.mindmap-demo-point-row > div > span { margin-top: 5px; color: var(--text-secondary); font-size: 11px; line-height: 1.45; }
+.mindmap-demo-plus-real {
+  display: grid !important;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--brand);
+  border-radius: 50%;
+  color: var(--brand);
+  font-size: 19px;
+  line-height: 1;
+}
+.mindmap-demo-magnifier {
+  position: absolute;
+  right: -10px;
+  top: 50%;
+  display: grid !important;
+  width: 76px;
+  height: 76px;
+  place-items: center;
+  border: 4px solid rgba(255,255,255,.96);
+  border-radius: 50%;
+  background: rgba(248, 249, 245, .96);
+  box-shadow: 0 6px 18px rgba(43, 58, 48, .16), inset 0 0 0 1px rgba(107,122,114,.3);
+  color: var(--brand);
+  font-size: 44px;
+  opacity: 0;
+  transform: translateY(-50%) scale(.15);
+  transform-origin: 58% 50%;
+}
+.mindmap-demo-magnifier::after {
+  position: absolute;
+  right: -18px;
+  bottom: -13px;
+  width: 27px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.96);
+  content: '';
+  transform: rotate(43deg);
+}
+.mindmap-demo-finger {
+  position: absolute;
+  z-index: 2;
+  width: 52px;
+  fill: #fffdf8;
+  stroke: var(--text-primary);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  filter: drop-shadow(0 3px 4px rgba(43,58,48,.17));
+  opacity: 0;
+}
+.mindmap-demo-finger--tap { right: -7px; top: 23%; transform: rotate(-20deg) translate(28px, 21px); }
+.mindmap-demo-real-toast {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 15px;
+  border-radius: 999px;
+  background: rgba(43, 58, 48, .92);
+  box-shadow: 0 8px 16px rgba(43, 58, 48, .14);
+  color: #fff;
+  font-size: 13px;
+  opacity: 0;
+  transform: translate(-50%, 14px);
+}
+.mindmap-demo-real-toast span { display: grid; width: 16px; height: 16px; place-items: center; border-radius: 50%; background: rgba(255,255,255,.22); font-size: 11px; }
+.mindmap-demo-slide--notes.is-active .mindmap-demo-magnifier { animation: mindmap-demo-magnify 700ms cubic-bezier(.22,.82,.25,1) 1s both; }
+.mindmap-demo-slide--notes.is-active .mindmap-demo-finger--tap { animation: mindmap-demo-finger-tap 760ms ease-out 2s both; }
+.mindmap-demo-slide--notes.is-active .mindmap-demo-real-toast { animation: mindmap-demo-toast-in 280ms ease-out 3.1s both; }
+
+/* 第 2 页：散点靠近并绘制真实脑图风格连线 */
+.mindmap-demo-graph { position: relative; width: 100%; height: 100%; min-height: 380px; }
+.mindmap-demo-edges { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mindmap-demo-edges line { stroke: #D1CBB8; stroke-width: .34; opacity: 0; transition: opacity 750ms ease 1050ms; }
+.mindmap-demo-slide--graph.is-active .mindmap-demo-edges line { opacity: 1; }
+.mindmap-demo-node {
+  position: absolute;
+  display: grid;
+  width: 86px;
+  min-height: 44px;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 7px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.82);
+  box-shadow: 0 5px 12px rgba(43,58,48,.07);
+  color: var(--text-primary);
+  font-size: 11px;
+  line-height: 1.32;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  transition: left 2100ms cubic-bezier(.22,.82,.25,1), top 2100ms cubic-bezier(.22,.82,.25,1);
+}
+.mindmap-demo-node > span > span { display: block; }
+.mindmap-demo-node--root { width: 108px; min-height: 58px; background: var(--brand); color: #fff; font-size: 12px; }
+
+/* 第 3 页：节点点击、Overlay 自动浏览 */
+.mindmap-demo-overlay-graph { position: absolute; inset: 0 0 43%; opacity: .78; }
+.mindmap-demo-overlay-node { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #978f82; }
+.mindmap-demo-overlay-node--root { top: 36%; left: 50%; width: 24px; height: 24px; background: #3b3835; transform: translate(-50%, -50%); }
+.mindmap-demo-overlay-node--selected { top: 20%; right: 19%; }
+.mindmap-demo-overlay-line { position: absolute; top: 26%; left: 50%; width: 29%; height: 1px; background: #D1CBB8; transform: rotate(-24deg); transform-origin: left center; }
+.mindmap-demo-finger--overlay { top: 5%; right: 11%; transform: rotate(-17deg) translate(28px, 32px); }
+.mindmap-demo-overlay-card {
+  position: absolute;
+  right: 2px;
+  bottom: 55px;
+  left: 2px;
+  padding: 18px;
+  border: 1px solid rgba(76,89,49,.16);
+  border-radius: 20px;
+  background: rgba(255, 252, 248, .98);
+  box-shadow: 0 12px 28px rgba(43,58,48,.14);
+  opacity: 0;
+  transform: translateY(32px);
+  animation: none;
+}
+.mindmap-demo-overlay-scroll { height: 122px; overflow: hidden; }
+.mindmap-demo-overlay-list p { margin: 0 0 20px; }
+.mindmap-demo-overlay-list { animation: none; }
+.mindmap-demo-overlay-list small,
+.mindmap-demo-overlay-list b,
+.mindmap-demo-overlay-list span { display: block; }
+.mindmap-demo-overlay-list small { color: var(--text-hint); font-size: 10px; }
+.mindmap-demo-overlay-list b { margin-top: 5px; color: var(--text-primary); font-family: var(--font-heading), var(--font-cjk), sans-serif; font-size: 15px; font-weight: 500; }
+.mindmap-demo-overlay-list span { margin-top: 5px; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.mindmap-demo-overlay-caption {
+  position: absolute;
+  right: 14px;
+  bottom: 4px;
+  left: 14px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(248,249,245,.9);
+  color: var(--brand);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(8px);
+}
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-finger--overlay { animation: mindmap-demo-finger-tap 700ms ease-out 700ms both; }
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-overlay-card { animation: mindmap-demo-overlay-in 330ms ease-out 1.35s both; }
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-overlay-list { animation: mindmap-demo-list-scroll 2.1s ease-in-out 2.4s both; }
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-overlay-caption { animation: mindmap-demo-caption-in 280ms ease-out 4.7s both; }
+
+@keyframes mindmap-demo-magnify { to { opacity: 1; transform: translateY(-50%) scale(1); } }
+@keyframes mindmap-demo-finger-tap {
+  0% { opacity: 0; }
+  25% { opacity: 1; transform: rotate(-20deg) translate(0, 0); }
+  55% { opacity: 1; transform: rotate(-20deg) translate(-7px, 8px) scale(.96); }
+  100% { opacity: 0; transform: rotate(-20deg) translate(-2px, 2px); }
+}
+@keyframes mindmap-demo-caption-in { to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .mindmap-demo-track, .mindmap-demo-node, .mindmap-demo-edges line { transition: none; }
+  .mindmap-demo-slide * { animation-duration: 1ms !important; animation-delay: 0ms !important; }
+}
+
+/* 圆点脑图：与真实脑图页面保持一致的节点与连线语言 */
+.mindmap-demo-dot-graph { position: relative; width: 100%; height: 100%; min-height: 380px; }
+.mindmap-demo-dot-edges { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mindmap-demo-dot-edges line { stroke: #D1CBB8; stroke-width: .34; opacity: 0; transition: opacity 760ms ease 1000ms; }
+.mindmap-demo-dot-graph.is-settled .mindmap-demo-dot-edges line { opacity: 1; }
+.mindmap-demo-dot {
+  position: absolute;
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #C3BDB2;
+  transform: translate(-50%, -50%);
+  transition: left 2000ms cubic-bezier(.22,.82,.25,1), top 2000ms cubic-bezier(.22,.82,.25,1);
+}
+.mindmap-demo-dot--dark { width: 19px; height: 19px; background: #948f86; }
+.mindmap-demo-dot--root { width: 30px; height: 30px; background: #3B3937; }
+.mindmap-demo-root-label {
+  position: absolute;
+  top: 49%;
+  left: 50%;
+  width: min(260px, 84%);
+  margin: 24px 0 0;
+  color: var(--text-secondary);
+  font-family: var(--font-heading), var(--font-cjk), sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+/* 第 3 页使用真实脑图页的骨架，再叠加真实 Overlay 动作 */
+.mindmap-demo-real-page { position: absolute; inset: 0; }
+.mindmap-demo-real-page .mindmap-demo-dot-graph { opacity: .94; }
+.mindmap-demo-real-page .mindmap-demo-dot-edges line { opacity: 1; transition: none; }
+.mindmap-demo-real-page .mindmap-demo-dot--target { z-index: 2; }
+.mindmap-demo-real-page .mindmap-demo-dot--target::after {
+  position: absolute;
+  inset: -11px;
+  border: 1px solid rgba(107,122,114,.55);
+  border-radius: 50%;
+  content: '';
+  opacity: 0;
+}
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-dot--target::after { animation: mindmap-demo-node-ripple 680ms ease-out .55s both; }
+.mindmap-demo-exit {
+  position: absolute;
+  bottom: 68px;
+  left: 50%;
+  margin: 0;
+  color: var(--text-hint);
+  font-size: 12px;
+  transform: translateX(-50%);
+}
+.mindmap-demo-nav-mock {
+  position: absolute;
+  right: 18px;
+  bottom: 8px;
+  left: 18px;
+  display: flex;
+  justify-content: space-around;
+  padding: 10px 16px;
+  border: 1px solid rgba(76,89,49,.1);
+  border-radius: 999px;
+  background: rgba(255,253,248,.92);
+  box-shadow: 0 10px 22px rgba(43,58,48,.08);
+}
+.mindmap-demo-nav-mock span { color: var(--text-hint); font-size: 19px; line-height: 1; text-align: center; }
+.mindmap-demo-nav-mock small { display: block; margin-top: 4px; font-size: 10px; }
+.mindmap-demo-nav-mock .is-current { color: var(--brand); }
+.mindmap-demo-slide--overlay .mindmap-demo-overlay-card {
+  top: 168px;
+  right: 0;
+  bottom: 60px;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 18px;
+  border-radius: 22px 22px 0 0;
+  background: rgba(247,246,240,.98);
+  transform: translateY(110%);
+}
+.mindmap-demo-slide--overlay .mindmap-demo-overlay-scroll { height: auto; flex: 1; }
+.mindmap-demo-slide--overlay .mindmap-demo-overlay-list p { padding: 15px; border: 1px solid rgba(76,89,49,.09); border-radius: 16px; background: rgba(255,255,255,.66); }
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-overlay-card { animation: mindmap-demo-real-overlay-in 420ms cubic-bezier(.2,.82,.25,1) 1.15s both; }
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-overlay-list { animation: mindmap-demo-list-scroll 2.3s ease-in-out 2.15s both; }
+.mindmap-demo-overlay-caption {
+  top: 22px;
+  right: 10px;
+  bottom: auto;
+  left: 10px;
+  padding: 13px 16px;
+  border: 1px solid rgba(76,89,49,.12);
+  border-radius: 14px;
+  background: rgba(255,253,248,.91);
+  box-shadow: 0 5px 14px rgba(43,58,48,.07);
+  font-size: 13px;
+  transform: translateY(-8px);
+}
+.mindmap-demo-caption-arrow {
+  position: absolute;
+  z-index: 3;
+  top: 73px;
+  left: 50%;
+  width: 80px;
+  height: 64px;
+  overflow: visible;
+  fill: none;
+  stroke: var(--brand);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+  opacity: 0;
+  transform: translateX(-12%);
+}
+.mindmap-demo-caption-arrow path { stroke-dasharray: 5 6; stroke-dashoffset: 96; }
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-caption-arrow { animation: mindmap-demo-arrow-appear 3s linear 4.45s infinite; }
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-caption-arrow path { animation: mindmap-demo-arrow-draw 1.35s steps(12,end) 4.45s infinite; }
+@keyframes mindmap-demo-node-ripple { 0% { opacity: 0; transform: scale(.4); } 28% { opacity: 1; } 100% { opacity: 0; transform: scale(1.4); } }
+@keyframes mindmap-demo-real-overlay-in { to { opacity: 1; transform: translateY(0); } }
+@keyframes mindmap-demo-arrow-appear { 0%, 8% { opacity: 0; } 16%, 69% { opacity: 1; } 84%, 100% { opacity: 0; } }
+@keyframes mindmap-demo-arrow-draw { 0% { stroke-dashoffset: 96; } 52% { stroke-dashoffset: 0; } 70%, 100% { stroke-dashoffset: 0; } }
+
+/* 相册式体验相框：外轮廓、内侧点状装饰线与内嵌动画舞台 */
+.mindmap-demo {
+  width: min(100%, 396px);
+  height: auto;
+  min-height: 0;
+  aspect-ratio: .96 / 1;
+  margin: 18px auto 0;
+  padding: 9px;
+  box-sizing: border-box;
+  background: var(--text-heading);
+  filter: drop-shadow(0 14px 22px rgba(38, 67, 50, .2));
+  clip-path: polygon(0 8%, 7% 8%, 10% 3%, 38% 3%, 41% 0, 59% 0, 62% 3%, 90% 3%, 93% 8%, 100% 8%, 100% 92%, 93% 92%, 90% 97%, 62% 97%, 59% 100%, 41% 100%, 38% 97%, 10% 97%, 7% 92%, 0 92%);
+}
+.mindmap-demo::after {
+  position: absolute;
+  z-index: 3;
+  inset: 14px;
+  border: 1px dotted rgba(255,255,255,.58);
+  clip-path: polygon(0 8%, 7% 8%, 10% 3%, 38% 3%, 41% 0, 59% 0, 62% 3%, 90% 3%, 93% 8%, 100% 8%, 100% 92%, 93% 92%, 90% 97%, 62% 97%, 59% 100%, 41% 100%, 38% 97%, 10% 97%, 7% 92%, 0 92%);
+  content: '';
+  pointer-events: none;
+}
+.mindmap-demo-viewport {
+  position: absolute;
+  z-index: 1;
+  inset: 9px;
+  background: var(--bg-page);
+  clip-path: polygon(0 8%, 7% 8%, 10% 3%, 38% 3%, 41% 0, 59% 0, 62% 3%, 90% 3%, 93% 8%, 100% 8%, 100% 92%, 93% 92%, 90% 97%, 62% 97%, 59% 100%, 41% 100%, 38% 97%, 10% 97%, 7% 92%, 0 92%);
+}
+.mindmap-demo-close-icon {
+  top: 30px;
+  right: 30px;
+  z-index: 5;
+  width: 38px;
+  height: 38px;
+  font-size: 26px;
+}
+.mindmap-demo-pagination {
+  position: absolute;
+  z-index: 4;
+  right: 0;
+  bottom: 17px;
+  left: 0;
+  padding: 0;
+}
+
+/* 第 2 页：聚合完成后以同一套 Toast 告知结果 */
+.mindmap-demo-graph-toast {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 15px;
+  border-radius: 999px;
+  background: rgba(43, 58, 48, .92);
+  box-shadow: 0 8px 16px rgba(43, 58, 48, .14);
+  color: #fff;
+  font-size: 13px;
+  opacity: 0;
+  transform: translate(-50%, 14px);
+}
+.mindmap-demo-graph-toast span { display: grid; width: 16px; height: 16px; place-items: center; border-radius: 50%; background: rgba(255,255,255,.22); font-size: 11px; }
+.mindmap-demo-slide--graph.is-active .mindmap-demo-graph-toast { animation: mindmap-demo-toast-in 280ms ease-out 2.45s both; }
+
+/* 第 3 页：真实抽屉 Overlay 打开时，脑图背景被黑色遮罩压暗 */
+.mindmap-demo-overlay-backdrop {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: rgba(28, 31, 28, .3);
+  opacity: 0;
+  pointer-events: none;
+}
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-overlay-backdrop { animation: mindmap-demo-backdrop-in 240ms ease-out 1.05s both; }
+.mindmap-demo-slide--overlay .mindmap-demo-overlay-card { z-index: 2; top: 43%; }
+.mindmap-demo-overlay-caption { z-index: 3; top: 24%; font-size: 15px; }
+.mindmap-demo-caption-arrow { top: 31%; z-index: 3; }
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-overlay-caption { animation: mindmap-demo-caption-in 280ms ease-out 3.55s both; }
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-caption-arrow { animation: mindmap-demo-arrow-appear 1.6s linear 3.82s infinite; }
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-caption-arrow path { animation: mindmap-demo-arrow-draw 1.6s steps(12,end) 3.82s infinite; }
+@keyframes mindmap-demo-backdrop-in { to { opacity: 1; } }
+
+/* 提示统一在相框舞台中央，避免落在动画与相框底部之间 */
+.mindmap-demo-real-toast,
+.mindmap-demo-graph-toast {
+  z-index: 4;
+  top: auto;
+  bottom: 44px;
+  transform: translateX(-50%);
+}
+.mindmap-demo-slide--notes.is-active .mindmap-demo-real-toast { animation: mindmap-demo-bottom-toast-in 280ms ease-out 3.1s both; }
+.mindmap-demo-slide--graph.is-active .mindmap-demo-graph-toast { animation: mindmap-demo-bottom-toast-in 280ms ease-out 2.45s both; }
+.mindmap-demo-caption-arrow { stroke: rgba(255, 255, 255, .88); }
+@keyframes mindmap-demo-bottom-toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translateX(-50%); }
+}
+
+/* 0.8:1 窄相框内，所有示例元素同步紧凑化 */
+.mindmap-demo-note-page { padding: 16px 2px 12px; }
+.mindmap-demo-note-title { margin-bottom: 13px; font-size: 19px; }
+.mindmap-demo-source-card,
+.mindmap-demo-points-card { margin-bottom: 8px; padding: 12px; border-radius: 16px; }
+.mindmap-demo-section-label { margin-bottom: 9px; font-size: 11px; }
+.mindmap-demo-source-card > p:last-child { font-size: 11px; line-height: 1.55; }
+.mindmap-demo-points-card { padding-bottom: 9px; }
+.mindmap-demo-point-row { min-height: 54px; gap: 8px; padding: 9px 8px 9px 10px; border-radius: 12px; }
+.mindmap-demo-point-row + .mindmap-demo-point-row { margin-top: 7px; }
+.mindmap-demo-point-row b { font-size: 12px; }
+.mindmap-demo-point-row > div > span { margin-top: 3px; font-size: 10px; line-height: 1.35; }
+.mindmap-demo-plus-real { width: 25px; height: 25px; font-size: 16px; }
+.mindmap-demo-magnifier { width: 62px; height: 62px; right: -8px; font-size: 35px; }
+.mindmap-demo-finger { width: 44px; }
+.mindmap-demo-real-toast,
+.mindmap-demo-graph-toast { bottom: 35px; padding: 9px 13px; font-size: 12px; }
+.mindmap-demo-dot { width: 12px; height: 12px; }
+.mindmap-demo-dot.mindmap-demo-dot--dark { width: 16px; height: 16px; }
+.mindmap-demo-dot.mindmap-demo-dot--root { width: 26px; height: 26px; }
+.mindmap-demo-root-label { width: min(230px, 82%); margin-top: 20px; font-size: 14px; }
+.mindmap-demo-slide--overlay .mindmap-demo-overlay-card { top: 42%; bottom: 49px; padding: 14px 12px; border-radius: 17px 17px 0 0; }
+.mindmap-demo-slide--overlay .mindmap-demo-overlay-list p { margin-bottom: 12px; padding: 11px; border-radius: 12px; }
+.mindmap-demo-overlay-list b { margin-top: 3px; font-size: 13px; }
+.mindmap-demo-overlay-list span { margin-top: 3px; font-size: 11px; }
+.mindmap-demo-overlay-caption { right: 8px; left: 8px; padding: 10px 12px; font-size: 14px; }
+.mindmap-demo-caption-arrow { width: 68px; height: 54px; }
+.mindmap-demo-exit { bottom: 54px; }
+.mindmap-demo-nav-mock { right: 12px; bottom: 6px; left: 12px; padding: 8px 10px; }
+
+/* 轻边框图片：原图画布有透明留白，放大至舞台外缘；动画仅在相框内孔中播放 */
+.mindmap-demo {
+  width: min(100%, 347px);
+  height: auto;
+  aspect-ratio: .7 / 1;
+  padding: 0;
+  background: #F7F5EF;
+  clip-path: none;
+  filter: drop-shadow(0 10px 18px rgba(83, 73, 59, .16));
+}
+.mindmap-demo::after {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: block;
+  border: 0;
+  /* 用略放大的图片抵消源图四周的透明留白，让可见相框贴合舞台边界。 */
+  background: url('/images/mindmap-demo-frame.png') center / 118% 118% no-repeat;
+  clip-path: none;
+  content: '';
+  pointer-events: none;
+}
+.mindmap-demo-viewport {
+  /* 这是相框真实的内孔，不是额外的安全边距；内容超出时直接在此裁剪。 */
+  inset: 5.5% 6.5%;
+  background: transparent;
+  clip-path: none;
+  overflow: hidden;
+}
+.mindmap-demo-close-icon { top: 8%; right: 8%; }
+.mindmap-demo-pagination { bottom: 7.5%; }
+
+/* 0.7:1 内页下的横向压缩，防止卡片和文字溢出 */
+.mindmap-demo-note-page { padding: 12px 0 8px; }
+.mindmap-demo-note-title { margin-bottom: 10px; font-size: 17px; }
+.mindmap-demo-source-card,
+.mindmap-demo-points-card { margin-bottom: 6px; padding: 10px; border-radius: 13px; }
+.mindmap-demo-section-label { margin-bottom: 7px; font-size: 10px; }
+.mindmap-demo-source-card > p:last-child { font-size: 10px; line-height: 1.42; }
+.mindmap-demo-point-row { min-height: 49px; padding: 8px 7px 8px 9px; border-radius: 10px; }
+.mindmap-demo-point-row + .mindmap-demo-point-row { margin-top: 6px; }
+.mindmap-demo-point-row b { font-size: 11px; }
+.mindmap-demo-point-row > div > span { font-size: 9px; }
+.mindmap-demo-plus-real { width: 22px; height: 22px; font-size: 14px; }
+.mindmap-demo-magnifier { width: 54px; height: 54px; font-size: 31px; }
+.mindmap-demo-finger { width: 39px; }
+.mindmap-demo-real-toast,
+.mindmap-demo-graph-toast { bottom: 12%; max-width: calc(100% - 28px); padding: 8px 10px; font-size: 11px; white-space: nowrap; }
+.mindmap-demo-dot { width: 10px; height: 10px; }
+.mindmap-demo-dot.mindmap-demo-dot--dark { width: 14px; height: 14px; }
+.mindmap-demo-dot.mindmap-demo-dot--root { width: 23px; height: 23px; }
+.mindmap-demo-root-label { width: min(210px, 86%); margin-top: 17px; font-size: 12px; }
+.mindmap-demo-slide--overlay .mindmap-demo-overlay-card { top: 43%; bottom: 12%; padding: 11px 10px; border-radius: 14px 14px 0 0; }
+.mindmap-demo-slide--overlay .mindmap-demo-overlay-list p { padding: 9px; border-radius: 10px; }
+.mindmap-demo-overlay-list b { font-size: 12px; }
+.mindmap-demo-overlay-list span { font-size: 10px; }
+.mindmap-demo-overlay-caption { top: 24%; padding: 8px 9px; font-size: 12px; }
+.mindmap-demo-caption-arrow { top: 31%; width: 56px; height: 46px; }
+.mindmap-demo-exit { bottom: 13%; }
+.mindmap-demo-nav-mock { right: 8px; bottom: 2%; left: 8px; padding: 6px 8px; }
+.mindmap-demo-nav-mock span { font-size: 16px; }
+.mindmap-demo-nav-mock small { font-size: 9px; }
+
+/* 第 3 页：提示与前两页一致，并与抽屉同步出现。 */
+.mindmap-demo-close-icon { top: 4.5%; right: 4.5%; }
+.mindmap-demo-overlay-list small { display: none; }
+.mindmap-demo-overlay-list b {
+  color: var(--text-primary);
+  font-family: var(--font-heading), var(--font-cjk), sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+}
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-overlay-list {
+  animation: mindmap-demo-list-scroll 3s cubic-bezier(0.77, 0, 0.175, 1) 1.15s infinite alternate;
+}
+.mindmap-demo-overlay-caption {
+  z-index: 3;
+  top: 24%;
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  display: flex;
+  width: max-content;
+  max-width: calc(100% - 20px);
+  gap: 8px;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(43, 58, 48, .92);
+  box-shadow: 0 8px 16px rgba(43, 58, 48, .14);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-align: left;
+  transform: translate(-50%, 8px);
+}
+.mindmap-demo-overlay-caption span {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255,255,255,.22);
+  font-size: 11px;
+}
+.mindmap-demo-slide--overlay.is-active .mindmap-demo-overlay-caption {
+  animation: mindmap-demo-bottom-toast-in 280ms cubic-bezier(0.23, 1, 0.32, 1) 1.15s both;
 }

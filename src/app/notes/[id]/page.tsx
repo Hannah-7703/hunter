@@ -6,6 +6,7 @@ import type { Note } from '@/shared/types';
 import { updateNote } from '@/lib/store';
 import {
   ensureMindNodes,
+  ensureMindmapPreferences,
   ensureNote,
   getCachedNote,
   upsertCachedNote,
@@ -41,6 +42,11 @@ export default function NotesPage() {
   const phaseBRequestRef = useRef<string | null>(null);
   const [phaseBFailed, setPhaseBFailed] = useState(false);
   const [pendingItemId, setPendingItemId] = useState<string | null>(null);
+  const [hasEverAddedMindNode, setHasEverAddedMindNode] = useState(false);
+  const [mindmapPreferencesReady, setMindmapPreferencesReady] = useState(false);
+  const [guideTargetId, setGuideTargetId] = useState<string | null>(null);
+  const [showFirstNodeGuide, setShowFirstNodeGuide] = useState(false);
+  const [mindmapNudgeCount, setMindmapNudgeCount] = useState<number | null>(null);
 
   // Cleanup all save timers on unmount
   useEffect(() => {
@@ -70,9 +76,39 @@ export default function NotesPage() {
       nodes.filter(nd => nd.noteId === id).forEach(nd => ids.add(nd.itemId));
       setMindNodeIds(ids);
     });
+    ensureMindmapPreferences().then(preferences => {
+      if (!cancelled) {
+        setHasEverAddedMindNode(preferences.hasEverAddedMindNode);
+        setMindmapPreferencesReady(true);
+      }
+    }).catch(() => {});
 
     return () => { cancelled = true; };
   }, [id, router]);
+
+  useEffect(() => {
+    if (!note || !phaseBReady || !mindmapPreferencesReady || hasEverAddedMindNode) return;
+    const candidate = note.keyPoints.find(item => item.summary.trim() && !mindNodeIds.has(item.id));
+    if (!candidate) return;
+
+    const timer = window.setTimeout(() => {
+      setGuideTargetId(candidate.id);
+      setShowFirstNodeGuide(true);
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [note, phaseBReady, mindmapPreferencesReady, hasEverAddedMindNode, mindNodeIds]);
+
+  useEffect(() => {
+    if (!showFirstNodeGuide) return;
+    const timer = window.setTimeout(() => setShowFirstNodeGuide(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [showFirstNodeGuide]);
+
+  useEffect(() => {
+    if (mindmapNudgeCount === null) return;
+    const timer = window.setTimeout(() => setMindmapNudgeCount(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [mindmapNudgeCount]);
 
   // Phase 3: Phase B auto-trigger (state derived during render, only API call in effect)
   useEffect(() => {
@@ -188,6 +224,7 @@ export default function NotesPage() {
   }
 
   async function handleToggleMindNode(itemId: string, summary: string, detail: string) {
+    const isAdding = !mindNodeIds.has(itemId);
     const nextIds = await toggleMindNode(
       id, itemId, summary, detail, mindNodeIds,
       (pending) => setPendingItemId(pending ? itemId : null),
@@ -195,6 +232,16 @@ export default function NotesPage() {
         const ids = new Set<string>();
         nodes.filter(nd => nd.noteId === id).forEach(nd => ids.add(nd.itemId));
         setMindNodeIds(ids);
+        if (isAdding) {
+          setHasEverAddedMindNode(true);
+          setShowFirstNodeGuide(false);
+          setGuideTargetId(null);
+          if (nodes.length < 4) {
+            setMindmapNudgeCount(nodes.length);
+          } else {
+            showToast('已加入脑图', 'success');
+          }
+        }
       }),
     );
     setMindNodeIds(nextIds);
@@ -263,6 +310,7 @@ export default function NotesPage() {
                   onPlusClick={() => handleToggleMindNode(kp.id, kp.summary, kp.detail)}
                   plusDisabled={!kp.summary.trim()}
                   plusPending={pendingItemId === kp.id}
+                  guideTarget={showFirstNodeGuide && guideTargetId === kp.id}
                 />
               ))}
               <AddRowButton label="+ 添加观点" onClick={() => addRow('keyPoints')} />
@@ -325,6 +373,13 @@ export default function NotesPage() {
       <p className="notes-disclaimer">
         以上内容由 AI 基于你的原始记录整理生成，仅供启发与参考，不构成专业建议。请结合实际情况自行判断与核实。
       </p>
+
+      {mindmapNudgeCount !== null && (
+        <div className="mindmap-first-nudge" role="status">
+          <strong>✦ 已沉淀 {mindmapNudgeCount} 条观点</strong>
+          <span>再留下 {4 - mindmapNudgeCount} 条，Hunter 会帮你发现<br />跨记录之间的关联</span>
+        </div>
+      )}
 
       <BottomNav />
     </main>

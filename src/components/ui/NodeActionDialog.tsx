@@ -1,13 +1,31 @@
 'use client';
 
 interface NodeActionDialogProps {
-  mode: 'cluster' | 'scatter' | 'root';
+  mode: 'cluster' | 'scatter' | 'root' | 'retry-read' | 'retry-analysis';
   onRemoveFromCluster?: () => void;
   onDelete: () => void;
   onCancel: () => void;
 }
 
 export default function NodeActionDialog({ mode, onRemoveFromCluster, onDelete, onCancel }: NodeActionDialogProps) {
+  if (mode === 'retry-read' || mode === 'retry-analysis') {
+    const isReadFailure = mode === 'retry-read';
+    return (
+      <div className="dialog-overlay" onClick={onCancel}>
+        <div className="dialog-card" style={{ background: 'rgba(255, 250, 243, 0.92)' }} onClick={e => e.stopPropagation()}>
+          <h3 className="dialog-title">{isReadFailure ? '脑图保存结果读取失败' : '自动关联分析请求失败'}</h3>
+          <p className="dialog-desc">
+            {isReadFailure ? '当前先为你展示基础散点图，是否重新读取？' : '当前图已保留，是否重新分析关联？'}
+          </p>
+          <div className="dialog-actions">
+            <button className="dialog-btn-cancel" onClick={onCancel}>取消</button>
+            <button className="dialog-btn-delete" onClick={onDelete}>重试</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (mode === 'cluster') {
     return (
       <div className="dialog-overlay" onClick={onCancel}>

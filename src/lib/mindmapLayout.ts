@@ -15,6 +15,21 @@ export interface FocusResult {
   backgroundNodes: string[];
 }
 
+export function completeFocusForNodes(nodes: MindNode[], focusResult: FocusResult): FocusResult {
+  const nodeIds = new Set(nodes.map(node => node.id));
+  const rootNodeId = nodeIds.has(focusResult.rootNodeId) ? focusResult.rootNodeId : '';
+  const primaryRelated = focusResult.primaryRelated.filter(id => nodeIds.has(id) && id !== rootNodeId);
+  const primarySet = new Set(primaryRelated);
+  const secondaryRelated = focusResult.secondaryRelated.filter(id => nodeIds.has(id) && id !== rootNodeId && !primarySet.has(id));
+  const related = new Set([rootNodeId, ...primaryRelated, ...secondaryRelated]);
+  const backgroundNodes = [
+    ...focusResult.backgroundNodes.filter(id => nodeIds.has(id) && !related.has(id)),
+    ...nodes.filter(node => !related.has(node.id) && !focusResult.backgroundNodes.includes(node.id)).map(node => node.id),
+  ];
+
+  return { rootNodeId, primaryRelated, secondaryRelated, backgroundNodes };
+}
+
 export interface FocusApiResponse {
   rootNode: { id: string; label: string };
   primaryRelated: string[];
@@ -101,8 +116,11 @@ export function buildVisibleEdges(focusResult: FocusResult): LayoutEdge[] {
   return edges;
 }
 
-const FOCUS_NODE_SIZE = 60;
-const FOCUS_MAX_ITER = 3;
+// 普通节点的可点击区域为 44px，预留适度呼吸感即可；
+// 过大的安全直径会把聚合图无谓拉散。
+const FOCUS_NODE_SIZE = 64;
+const ROOT_NODE_SIZE = 76;
+const FOCUS_MAX_ITER = 12;
 const BACKGROUND_OUTER_RADIUS = 300;
 
 export function computeFocusLayout(
@@ -120,7 +138,7 @@ export function computeFocusLayout(
 
   layout.set(rootNodeId, { x: rootX, y: rootY });
 
-  const innerRadius = Math.min(130, 80 + primaryRelated.length * 2);
+  const innerRadius = Math.max(118, (primaryRelated.length * FOCUS_NODE_SIZE) / (Math.PI * 2) + 18);
   for (let i = 0; i < primaryRelated.length; i++) {
     const baseAngle = (i / primaryRelated.length) * Math.PI * 2;
     const offset = ((hashCode(primaryRelated[i]) % 30) - 15) * (Math.PI / 180);
@@ -131,7 +149,10 @@ export function computeFocusLayout(
     });
   }
 
-  const outerRadius = Math.min(220, Math.max(150, innerRadius + 60));
+  const outerRadius = Math.max(
+    innerRadius + 72,
+    (secondaryRelated.length * FOCUS_NODE_SIZE) / (Math.PI * 2) + 36,
+  );
   for (let i = 0; i < secondaryRelated.length; i++) {
     const baseAngle = (i / Math.max(secondaryRelated.length, 1)) * Math.PI * 2;
     const offset = ((hashCode(secondaryRelated[i]) % 30) - 15) * (Math.PI / 180);
@@ -155,7 +176,7 @@ export function computeFocusLayout(
     const bgStartR = BACKGROUND_OUTER_RADIUS + 40;
     for (let gi = 0; gi < groups.length; gi++) {
       const [, groupNodes] = groups[gi];
-      const groupR = bgStartR + gi * 80;
+      const groupR = bgStartR + gi * (FOCUS_NODE_SIZE + 34);
       const angleOffset = (gi * Math.PI) / 3;
       for (let ni = 0; ni < groupNodes.length; ni++) {
         const node = groupNodes[ni];
@@ -172,23 +193,30 @@ export function computeFocusLayout(
   for (let iter = 0; iter < FOCUS_MAX_ITER; iter++) {
     let moved = false;
     for (let i = 0; i < allPositions.length; i++) {
-      if (allPositions[i].id === rootNodeId) continue;
       for (let j = i + 1; j < allPositions.length; j++) {
-        if (allPositions[j].id === rootNodeId) continue;
         const a = allPositions[i].pos;
         const b = allPositions[j].pos;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const overlap = FOCUS_NODE_SIZE - dist;
+        const involvesRoot = allPositions[i].id === rootNodeId || allPositions[j].id === rootNodeId;
+        const overlap = (involvesRoot ? ROOT_NODE_SIZE : FOCUS_NODE_SIZE) - dist;
 
         if (overlap > 0) {
-          const pushX = (dx / dist) * overlap * 0.55;
-          const pushY = (dy / dist) * overlap * 0.55;
-          a.x -= pushX;
-          b.x += pushX;
-          a.y -= pushY;
-          b.y += pushY;
+          const pushX = (dx / dist) * overlap * 0.56;
+          const pushY = (dy / dist) * overlap * 0.56;
+          if (allPositions[i].id === rootNodeId) {
+            b.x += pushX * 1.8;
+            b.y += pushY * 1.8;
+          } else if (allPositions[j].id === rootNodeId) {
+            a.x -= pushX * 1.8;
+            a.y -= pushY * 1.8;
+          } else {
+            a.x -= pushX;
+            b.x += pushX;
+            a.y -= pushY;
+            b.y += pushY;
+          }
           moved = true;
         }
       }

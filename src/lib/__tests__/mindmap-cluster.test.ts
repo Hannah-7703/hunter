@@ -21,9 +21,11 @@ vi.mock('@/lib/api', () => ({
 import {
   clearClientCache,
   deleteNodeFromCache,
+  hydrateMindmapFocus,
+  moveNodeToBackground,
   prepareMindmapFocus,
   refreshMindNodes,
-  removeNodeFromFocusCluster,
+  setPersistedMindmapPreferences,
   useClientDataCache,
 } from '@/lib/clientDataCache';
 
@@ -68,6 +70,86 @@ describe('mindmap cluster state', () => {
     });
   });
 
+  it('restores a consistent persisted manual root without another Focus request', async () => {
+    const fetchMock = vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ success: true })));
+    const nodes = [node('root'), node('related'), node('other'), node('four')];
+    setPersistedMindmapPreferences({
+      manualRootNodeId: 'root',
+      excludedNodeIds: [],
+      focusResult: {
+        rootNodeId: 'root',
+        primaryRelated: ['related'],
+        secondaryRelated: ['other'],
+        backgroundNodes: ['four'],
+      },
+    });
+
+    await prepareMindmapFocus(nodes);
+
+    expect(focusCalls(fetchMock)).toHaveLength(0);
+    expect(useClientDataCache().focus?.result?.rootNodeId).toBe('root');
+  });
+
+  it('清理已删除节点的历史排除标记后直接恢复保存图，不重跑 AI', async () => {
+    const fetchMock = vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ success: true })));
+    const nodes = [node('root'), node('related'), node('other'), node('four')];
+    setPersistedMindmapPreferences({
+      manualRootNodeId: null,
+      excludedNodeIds: ['deleted-node'],
+      focusResult: {
+        rootNodeId: 'root',
+        primaryRelated: ['related'],
+        secondaryRelated: ['other'],
+        backgroundNodes: ['four', 'deleted-node'],
+      },
+    });
+
+    await hydrateMindmapFocus(nodes, false);
+
+    expect(useClientDataCache().focus?.result).toEqual({
+      rootNodeId: 'root',
+      primaryRelated: ['related'],
+      secondaryRelated: ['other'],
+      backgroundNodes: ['four'],
+    });
+    expect(focusCalls(fetchMock)).toHaveLength(0);
+  });
+
+  it('deduplicates concurrent repair requests for an inconsistent persisted root', async () => {
+    let resolveFocus: ((value: Response) => void) | undefined;
+    const fetchMock = vi.mocked(fetch).mockImplementation((url) => {
+      if (url === '/api/mind-nodes/focus') {
+        return new Promise<Response>(resolve => { resolveFocus = resolve; });
+      }
+      return Promise.resolve(new Response(JSON.stringify({ success: true })));
+    });
+    const nodes = [node('root'), node('legacy-root'), node('other'), node('four')];
+    setPersistedMindmapPreferences({
+      manualRootNodeId: 'root',
+      excludedNodeIds: [],
+      focusResult: {
+        rootNodeId: 'legacy-root',
+        primaryRelated: ['other'],
+        secondaryRelated: [],
+        backgroundNodes: ['four'],
+      },
+    });
+
+    const first = prepareMindmapFocus(nodes);
+    const second = prepareMindmapFocus(nodes);
+
+    expect(focusCalls(fetchMock)).toHaveLength(1);
+    resolveFocus?.(new Response(JSON.stringify({
+      rootNode: { id: 'root', label: 'root' },
+      primaryRelated: ['other'],
+      secondaryRelated: [],
+      backgroundNodes: ['legacy-root', 'four'],
+    })));
+    await Promise.all([first, second]);
+
+    expect(useClientDataCache().focus?.result?.rootNodeId).toBe('root');
+  });
+
   it('moves a removed cluster node to background without another Focus request', async () => {
     const fetchMock = vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({
       rootNode: { id: 'root', label: 'root' },
@@ -77,7 +159,7 @@ describe('mindmap cluster state', () => {
     })));
     const nodes = [node('root'), node('related'), node('other'), node('four')];
     await prepareMindmapFocus(nodes, { forcedRootNodeId: 'root' });
-    removeNodeFromFocusCluster('related');
+    await moveNodeToBackground('related');
 
     const state = useClientDataCache();
     expect(state.focus?.result?.primaryRelated).toEqual([]);
@@ -85,10 +167,9 @@ describe('mindmap cluster state', () => {
     expect(focusCalls(fetchMock)).toHaveLength(1);
   });
 
-  it('reclusters after deleting a root even when fewer than four nodes remain', async () => {
+  it('keeps a scatter map after deleting a root when fewer than four nodes remain', async () => {
     const focusResponses = [
       { rootNode: { id: 'root', label: 'root' }, primaryRelated: ['remaining'], secondaryRelated: ['other'], backgroundNodes: ['four'] },
-      { rootNode: { id: 'remaining', label: 'remaining' }, primaryRelated: ['other'], secondaryRelated: [], backgroundNodes: [] },
     ];
     const fetchMock = vi.mocked(fetch).mockImplementation((url) => {
       if (url === '/api/mind-nodes/focus') {
@@ -103,7 +184,7 @@ describe('mindmap cluster state', () => {
     await deleteNodeFromCache('root');
 
     expect(mocks.deleteMindNode).toHaveBeenCalledWith('root');
-    expect(focusCalls(fetchMock)).toHaveLength(2);
-    expect(useClientDataCache().focus?.result?.rootNodeId).toBe('remaining');
+    expect(focusCalls(fetchMock)).toHaveLength(1);
+    expect(useClientDataCache().focus).toBeNull();
   });
 });
