@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fitLayoutToCanvas, nodesHash } from '@/lib/mindmapLayout';
+import { computeFocusLayout, fitLayoutToCanvas, nodesHash } from '@/lib/mindmapLayout';
 import type { MindNode } from '@/shared/types';
 
 function makeNode(id: string, label: string): MindNode {
@@ -63,5 +63,32 @@ describe('fitLayoutToCanvas', () => {
     expect([...fitted.layout.values()].every(position => position.x <= fitted.width - 80 && position.y <= fitted.height - 80)).toBe(true);
     expect(fitted.width).toBeGreaterThanOrEqual(1060);
     expect(fitted.height).toBeGreaterThanOrEqual(1060);
+  });
+});
+
+describe('computeFocusLayout', () => {
+  it('在保留防碰撞间距的同时维持紧凑的主关联圈', () => {
+    const nodes = ['root', 'a', 'b', 'c', 'd', 'e'].map(id => makeNode(id, id));
+    const layout = computeFocusLayout(nodes, {
+      rootNodeId: 'root',
+      primaryRelated: ['a', 'b', 'c', 'd', 'e'],
+      secondaryRelated: [],
+      backgroundNodes: [],
+    }, 720, 900);
+    const root = layout.get('root')!;
+    const primaryPositions = ['a', 'b', 'c', 'd', 'e'].map(id => layout.get(id)!);
+
+    for (const position of primaryPositions) {
+      expect(Math.hypot(position.x - root.x, position.y - root.y)).toBeLessThan(140);
+    }
+
+    for (let index = 0; index < primaryPositions.length; index++) {
+      for (let other = index + 1; other < primaryPositions.length; other++) {
+        expect(Math.hypot(
+          primaryPositions[index].x - primaryPositions[other].x,
+          primaryPositions[index].y - primaryPositions[other].y,
+        )).toBeGreaterThanOrEqual(64);
+      }
+    }
   });
 });

@@ -9,11 +9,12 @@ interface BulletCardProps {
   onPlusClick: () => void;
   plusDisabled?: boolean;
   plusPending?: boolean;
+  guideTarget?: boolean;
 }
 
 export default function BulletCard({
   summary, detail, onSummaryChange, onDetailChange,
-  plusSelected, onPlusClick, plusDisabled, plusPending,
+  plusSelected, onPlusClick, plusDisabled, plusPending, guideTarget,
 }: BulletCardProps) {
   return (
     <div className="bullet-card">
@@ -29,15 +30,21 @@ export default function BulletCard({
         >
           {summary}
         </span>
-        <button
-          className={`plus-btn ${plusSelected ? 'plus-btn-selected' : ''}`}
-          onClick={onPlusClick}
-          disabled={plusDisabled || plusPending}
+        <span
+          className={guideTarget ? 'first-node-guide-target' : undefined}
+          data-first-node-guide-target={guideTarget ? 'true' : undefined}
         >
-          {plusPending ? (
-            <span className="plus-spinner" />
-          ) : plusSelected ? '✓' : '+'}
-        </button>
+          <button
+            className={`plus-btn ${plusSelected ? 'plus-btn-selected' : ''}`}
+            onClick={onPlusClick}
+            disabled={plusDisabled || plusPending}
+          >
+            {plusPending ? (
+              <span className="plus-spinner" />
+            ) : plusSelected ? '✓' : '+'}
+          </button>
+          {guideTarget && <span className="first-node-guide-magnifier" aria-hidden="true" />}
+        </span>
       </div>
       <span
         className="bullet-card-detail"

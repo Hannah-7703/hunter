@@ -6,6 +6,7 @@ import type { Note } from '@/shared/types';
 import { updateNote } from '@/lib/store';
 import {
   ensureMindNodes,
+  ensureMindmapPreferences,
   ensureNote,
   getCachedNote,
   upsertCachedNote,
@@ -25,6 +26,35 @@ import BottomNav from '@/components/ui/BottomNav';
 import { showToast } from '@/components/ui/Toast';
 import { downloadMarkdown } from '@/lib/export';
 
+type FirstNodeGuideAnchor = {
+  tooltipLeft: number;
+  tooltipTop: number;
+  fingerLeft: number;
+  fingerTop: number;
+};
+
+function FirstNodeGuide({ anchor }: { anchor: FirstNodeGuideAnchor }) {
+  return (
+    <div className="first-node-guide-layer" aria-hidden="true">
+      <span
+        className="first-node-guide-tooltip"
+        role="status"
+        style={{ left: anchor.tooltipLeft, top: anchor.tooltipTop }}
+      >
+        选一条值得反复回顾的观点，沉淀到脑图
+      </span>
+      <svg
+        className="first-node-guide-finger"
+        viewBox="0 0 80 80"
+        style={{ left: anchor.fingerLeft, top: anchor.fingerTop }}
+      >
+        <path d="M37 66 25 53c-4-4 2-10 6-6l5 5V26c0-7 10-7 10 0v17l3-4c4-5 11 0 7 5l-4 6 4-4c5-4 10 3 5 7l-5 5 3-1c6-3 9 5 4 8l-11 8c-7 4-16 2-21-4Z" />
+        <path d="M44 18v-7" />
+      </svg>
+    </div>
+  );
+}
+
 export default function NotesPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -41,6 +71,12 @@ export default function NotesPage() {
   const phaseBRequestRef = useRef<string | null>(null);
   const [phaseBFailed, setPhaseBFailed] = useState(false);
   const [pendingItemId, setPendingItemId] = useState<string | null>(null);
+  const [hasEverAddedMindNode, setHasEverAddedMindNode] = useState(false);
+  const [mindmapPreferencesReady, setMindmapPreferencesReady] = useState(false);
+  const [guideTargetId, setGuideTargetId] = useState<string | null>(null);
+  const [showFirstNodeGuide, setShowFirstNodeGuide] = useState(false);
+  const [firstNodeGuideAnchor, setFirstNodeGuideAnchor] = useState<FirstNodeGuideAnchor | null>(null);
+  const [mindmapNudgeCount, setMindmapNudgeCount] = useState<number | null>(null);
 
   // Cleanup all save timers on unmount
   useEffect(() => {
@@ -70,9 +106,78 @@ export default function NotesPage() {
       nodes.filter(nd => nd.noteId === id).forEach(nd => ids.add(nd.itemId));
       setMindNodeIds(ids);
     });
+    ensureMindmapPreferences().then(preferences => {
+      if (!cancelled) {
+        setHasEverAddedMindNode(preferences.hasEverAddedMindNode);
+        setMindmapPreferencesReady(true);
+      }
+    }).catch(() => {});
 
     return () => { cancelled = true; };
   }, [id, router]);
+
+  useEffect(() => {
+    if (!note || !phaseBReady || !mindmapPreferencesReady || hasEverAddedMindNode) return;
+    const candidate = note.keyPoints.find(item => item.summary.trim() && !mindNodeIds.has(item.id));
+    if (!candidate) return;
+
+    const timer = window.setTimeout(() => {
+      setGuideTargetId(candidate.id);
+      setShowFirstNodeGuide(true);
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [note, phaseBReady, mindmapPreferencesReady, hasEverAddedMindNode, mindNodeIds]);
+
+  useEffect(() => {
+    if (!showFirstNodeGuide) return;
+    const timer = window.setTimeout(() => setShowFirstNodeGuide(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [showFirstNodeGuide]);
+
+  useEffect(() => {
+    if (!showFirstNodeGuide) {
+      return;
+    }
+
+    const target = document.querySelector<HTMLElement>('[data-first-node-guide-target="true"]');
+    if (!target) return;
+
+    const updatePosition = () => {
+      const rect = target.getBoundingClientRect();
+      const tooltipWidth = 270;
+      const viewportPadding = 16;
+      const tooltipLeft = Math.max(
+        viewportPadding,
+        Math.min(rect.right - tooltipWidth, window.innerWidth - tooltipWidth - viewportPadding),
+      );
+
+      setFirstNodeGuideAnchor({
+        tooltipLeft,
+        tooltipTop: Math.max(20, rect.top - 10),
+        // The SVG fingertip is x=44 in an 80px viewBox; anchor that point to the magnifier's centre line.
+        fingerLeft: rect.left + rect.width / 2 - (44 / 80) * 45,
+        fingerTop: rect.bottom + 8,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    const resizeObserver = new ResizeObserver(updatePosition);
+    resizeObserver.observe(target);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+      resizeObserver.disconnect();
+    };
+  }, [showFirstNodeGuide, guideTargetId]);
+
+  useEffect(() => {
+    if (mindmapNudgeCount === null) return;
+    const timer = window.setTimeout(() => setMindmapNudgeCount(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [mindmapNudgeCount]);
 
   // Phase 3: Phase B auto-trigger (state derived during render, only API call in effect)
   useEffect(() => {
@@ -188,6 +293,7 @@ export default function NotesPage() {
   }
 
   async function handleToggleMindNode(itemId: string, summary: string, detail: string) {
+    const isAdding = !mindNodeIds.has(itemId);
     const nextIds = await toggleMindNode(
       id, itemId, summary, detail, mindNodeIds,
       (pending) => setPendingItemId(pending ? itemId : null),
@@ -195,6 +301,16 @@ export default function NotesPage() {
         const ids = new Set<string>();
         nodes.filter(nd => nd.noteId === id).forEach(nd => ids.add(nd.itemId));
         setMindNodeIds(ids);
+        if (isAdding) {
+          setHasEverAddedMindNode(true);
+          setShowFirstNodeGuide(false);
+          setGuideTargetId(null);
+          if (nodes.length < 4) {
+            setMindmapNudgeCount(nodes.length);
+          } else {
+            showToast('已加入脑图', 'success');
+          }
+        }
       }),
     );
     setMindNodeIds(nextIds);
@@ -263,6 +379,7 @@ export default function NotesPage() {
                   onPlusClick={() => handleToggleMindNode(kp.id, kp.summary, kp.detail)}
                   plusDisabled={!kp.summary.trim()}
                   plusPending={pendingItemId === kp.id}
+                  guideTarget={showFirstNodeGuide && guideTargetId === kp.id}
                 />
               ))}
               <AddRowButton label="+ 添加观点" onClick={() => addRow('keyPoints')} />
@@ -325,6 +442,17 @@ export default function NotesPage() {
       <p className="notes-disclaimer">
         以上内容由 AI 基于你的原始记录整理生成，仅供启发与参考，不构成专业建议。请结合实际情况自行判断与核实。
       </p>
+
+      {mindmapNudgeCount !== null && (
+        <div className="mindmap-first-nudge" role="status">
+          <strong>✦ 已沉淀 {mindmapNudgeCount} 条观点</strong>
+          <span>再留下 {4 - mindmapNudgeCount} 条，<span className="mindmap-first-nudge-relation">Hunter 会帮你发现跨记录之间的关联</span></span>
+        </div>
+      )}
+
+      {showFirstNodeGuide && firstNodeGuideAnchor && (
+        <FirstNodeGuide anchor={firstNodeGuideAnchor} />
+      )}
 
       <BottomNav />
     </main>

@@ -292,6 +292,8 @@ export async function POST(request: Request): Promise<Response> {
 
     const body = (await request.json()) as {
       nodes?: FocusRequestNode[];
+      mode?: 'full' | 'append';
+      newNodeId?: string;
       previousFocus?: PreviousFocusInput;
       forcedRootNodeId?: string;
       forcedBackgroundNodes?: string[];
@@ -337,21 +339,68 @@ export async function POST(request: Request): Promise<Response> {
     const contextMap = await enrichNodeContexts(resolvedNodes, ctx);
     const allContexts = resolvedNodes.map(n => contextMap.get(n.id)!).filter(Boolean);
 
-    const forcedBgSet = new Set(body.forcedBackgroundNodes ?? []);
+    // 仅接受本次已解析到的真实节点，避免历史残留 ID 被重新写回聚合结果。
+    const forcedBgSet = new Set((body.forcedBackgroundNodes ?? []).filter(id => foundIds.has(id)));
+
+    // 新增观点：只把“根节点 + 新节点”送给 AI，绝不重算已有聚合关系。
+    if (body.mode === 'append') {
+      const rootId = body.forcedRootNodeId;
+      const newNodeId = body.newNodeId;
+      const root = rootId ? resolvedNodes.find(node => node.id === rootId) : null;
+      const newNode = newNodeId ? resolvedNodes.find(node => node.id === newNodeId) : null;
+      if (!root || !newNode) {
+        return Response.json({ error: '增量分析所需节点不存在', code: 'INCREMENTAL_NODE_MISSING' }, { status: 409 });
+      }
+      if (root.id === newNode.id || forcedBgSet.has(newNode.id)) {
+        return Response.json({
+          rootNode: { id: root.id, label: root.label },
+          primaryRelated: [], secondaryRelated: [], backgroundNodes: [newNode.id],
+        });
+      }
+
+      const result = await deepseekChat(
+        [{ role: 'user', content: buildIncrementalPrompt(contextMap.get(root.id)!, [contextMap.get(newNode.id)!]) }],
+        { temperature: 0.3, max_tokens: 1024, timeout: 25000, response_format: { type: 'json_object' } },
+      );
+      if ('error' in result) {
+        logFocusAiFailure(result.error.code, 2, result.error.upstreamStatus);
+        return Response.json({ error: '脑图结构分析暂时不可用', code: result.error.code }, { status: 503 });
+      }
+      try {
+        const parsed = JSON.parse(result.content.trim()) as Record<string, unknown>;
+        const classification = validateIncrementalResponse(new Set([newNode.id]), {
+          primaryRelated: (parsed.primaryRelated as string[]) ?? [],
+          secondaryRelated: (parsed.secondaryRelated as string[]) ?? [],
+          backgroundNodes: (parsed.backgroundNodes as string[]) ?? [],
+        });
+        const isClassified = classification.primaryRelated.includes(newNode.id)
+          || classification.secondaryRelated.includes(newNode.id)
+          || classification.backgroundNodes.includes(newNode.id);
+        return Response.json({
+          rootNode: { id: root.id, label: root.label },
+          primaryRelated: classification.primaryRelated,
+          secondaryRelated: classification.secondaryRelated,
+          backgroundNodes: isClassified ? classification.backgroundNodes : [newNode.id],
+        });
+      } catch {
+        logFocusAiFailure('AI_INVALID_RESPONSE', 2);
+        return Response.json({ error: '脑图结构分析返回异常，请稍后重试', code: 'AI_INVALID_RESPONSE' }, { status: 500 });
+      }
+    }
 
     // 用户手动置顶 rootNode
     if (body.forcedRootNodeId) {
       const forcedRoot = resolvedNodes.find(n => n.id === body.forcedRootNodeId);
       if (forcedRoot) {
         const rootContext = contextMap.get(forcedRoot.id)!;
-        const otherContexts = allContexts.filter(c => c.id !== forcedRoot.id);
+        const otherContexts = allContexts.filter(c => c.id !== forcedRoot.id && !forcedBgSet.has(c.id));
 
         if (otherContexts.length === 0) {
           return Response.json({
             rootNode: { id: forcedRoot.id, label: forcedRoot.label },
             primaryRelated: [],
             secondaryRelated: [],
-            backgroundNodes: [],
+            backgroundNodes: [...forcedBgSet].filter(id => id !== forcedRoot.id),
           });
         }
 
@@ -402,6 +451,7 @@ export async function POST(request: Request): Promise<Response> {
           backgroundNodes: aiResult.backgroundNodes,
         });
       }
+      return Response.json({ error: '指定的根节点已不存在', code: 'FORCED_ROOT_MISSING' }, { status: 409 });
     }
 
     // 增量模式判定（forcedRootNodeId 为空时走原有逻辑）
@@ -442,7 +492,11 @@ export async function POST(request: Request): Promise<Response> {
         prompt = buildIncrementalPrompt(rootContext, newContexts);
       }
     } else {
-      prompt = buildFullPrompt(allContexts);
+      const rootCandidates = allContexts.filter(context => !forcedBgSet.has(context.id));
+      if (rootCandidates.length === 0) {
+        return Response.json({ error: '没有可用于聚合的根节点', code: 'ROOT_CANDIDATES_EMPTY' }, { status: 409 });
+      }
+      prompt = buildFullPrompt(rootCandidates);
     }
 
     const result = await deepseekChat(
@@ -488,6 +542,9 @@ export async function POST(request: Request): Promise<Response> {
     } else {
       const candidate = parsed as unknown as FocusApiResponse;
       aiResult = validateAndSanitize(nodeIdSet, candidate);
+      if (forcedBgSet.has(aiResult.rootNode.id)) {
+        return Response.json({ error: 'AI 返回了已排除的根节点', code: 'AI_INVALID_ROOT' }, { status: 500 });
+      }
       if (forcedBgSet.size > 0) {
         aiResult.primaryRelated = aiResult.primaryRelated.filter(id => !forcedBgSet.has(id));
         aiResult.secondaryRelated = aiResult.secondaryRelated.filter(id => !forcedBgSet.has(id));

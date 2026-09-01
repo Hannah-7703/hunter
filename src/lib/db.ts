@@ -400,13 +400,14 @@ export interface UserMindmapPreferences {
   manualRootNodeId: string | null;
   excludedNodeIds: string[];
   focusResult: FocusResult | null;
+  hasEverAddedMindNode: boolean;
 }
 
 export async function dbGetMindmapPreferences(context: RequestContext): Promise<UserMindmapPreferences> {
   requireUserId(context);
   const { data, error } = await getSupabaseClient()
     .from('user_preferences')
-    .select('mindmap_manual_root_node_id, mindmap_excluded_node_ids, mindmap_focus_result')
+    .select('mindmap_manual_root_node_id, mindmap_excluded_node_ids, mindmap_focus_result, has_ever_added_mind_node')
     .eq('user_id', context.userId)
     .maybeSingle();
   if (error) throw new DatabaseOperationError('MINDMAP_PREFERENCES_GET_FAILED', error.code ?? null);
@@ -415,12 +416,18 @@ export async function dbGetMindmapPreferences(context: RequestContext): Promise<
     manualRootNodeId: (data?.mindmap_manual_root_node_id as string) ?? null,
     excludedNodeIds: (data?.mindmap_excluded_node_ids as string[]) ?? [],
     focusResult: (data?.mindmap_focus_result as FocusResult) ?? null,
+    hasEverAddedMindNode: Boolean(data?.has_ever_added_mind_node),
   };
 }
 
 export async function dbUpsertMindmapPreferences(
   context: RequestContext,
-  prefs: { manualRootNodeId?: string | null; excludedNodeIds?: string[]; focusResult?: FocusResult | null }
+  prefs: {
+    manualRootNodeId?: string | null;
+    excludedNodeIds?: string[];
+    focusResult?: FocusResult | null;
+    hasEverAddedMindNode?: boolean;
+  }
 ): Promise<void> {
   requireUserId(context);
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -432,6 +439,9 @@ export async function dbUpsertMindmapPreferences(
   }
   if (prefs.focusResult !== undefined) {
     update.mindmap_focus_result = prefs.focusResult;
+  }
+  if (prefs.hasEverAddedMindNode !== undefined) {
+    update.has_ever_added_mind_node = prefs.hasEverAddedMindNode;
   }
 
   const { error } = await getSupabaseClient()

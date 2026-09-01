@@ -5,11 +5,17 @@ import type { MindNode as MindNodeType, Note } from '@/shared/types';
 import {
   ensureMindNodes,
   ensureNotes,
+  ensureMindmapPreferences,
+  getCachedMindmapPreferences,
+  hydrateMindmapFocus,
+  markMindmapReadError,
   prepareMindmapFocus,
-  removeNodeFromFocusCluster,
+  refreshMindNodes,
+  moveNodeToBackground,
+  setManualRootAndRecluster,
   useClientDataCache,
   deleteNodeFromCache,
-  setPersistedFocusResult,
+  dismissMindmapError,
 } from '@/lib/clientDataCache';
 import {
   buildVisibleEdges,
@@ -25,11 +31,13 @@ import BottomNav from '@/components/ui/BottomNav';
 import EmptyState from '@/components/ui/EmptyState';
 import LoadingView from '@/components/ui/LoadingView';
 import NodeActionDialog from '@/components/ui/NodeActionDialog';
+import MindmapDemo from '@/components/mindmap/MindmapDemo';
 import { showToast } from '@/components/ui/Toast';
 
 const SVG_WIDTH = 720;
 const SVG_HEIGHT = 900;
 const PAD = 80;
+const MINDMAP_DEMO_CLOSED_KEY = 'aha-hunter-mindmap-demo-closed';
 
 function computeScatterLayout(nodes: MindNodeType[]): Map<string, { x: number; y: number }> {
   const layout = new Map<string, { x: number; y: number }>();
@@ -70,13 +78,18 @@ export default function MindMapPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [linesHash, setLinesHash] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [forcedBackgroundNodeIds, setForcedBackgroundNodeIds] = useState<Set<string>>(new Set());
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  const [needsManualReanalysis, setNeedsManualReanalysis] = useState(false);
+  const [hasEverAddedMindNode, setHasEverAddedMindNode] = useState(false);
+  const [hasClosedDemo, setHasClosedDemo] = useState(false);
+  const [isDemoOpen, setIsDemoOpen] = useState(false);
   const [clusterActionTarget, setClusterActionTarget] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [rootDeleteTarget, setRootDeleteTarget] = useState<string | null>(null);
   const [isSavingRoot, setIsSavingRoot] = useState(false);
   const [isDeletingRoot, setIsDeletingRoot] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
+  const reclusterToastKeyRef = useRef<string | null>(null);
   const panRef = useRef<{
     pointerId: number;
     startX: number;
@@ -87,35 +100,87 @@ export default function MindMapPage() {
   } | null>(null);
 
   const hash = useMemo(() => nodesHash(nodes), [nodes]);
-  const readyFocus = focus?.hash === hash && focus.status === 'ready' ? focus.result : null;
-  const isFocusLoading =
-    (focus?.hash === hash && focus.status === 'loading') ||
-    (focus === null && nodes.length >= 4);
+  // 增量分析、重组或失败时都继续使用上一版图，避免整张脑图退回散点。
+  const readyFocus = focus?.hash === hash && focus.result ? focus.result : null;
+  // 只有真正发起 AI 请求时才显示“生成关联关系”；
+  // 刷新后恢复已保存结果的短暂阶段不应被误认为正在重新分析。
+  const isFocusLoading = focus?.hash === hash && focus.status === 'loading';
   const itemMap = useMemo(() => buildItemMap(notes), [notes]);
+
+  // 根节点变更时沿用“已加入脑图”的全局 Toast 视觉，避免脑图页出现另一套提示样式。
+  useEffect(() => {
+    if (!isFocusLoading || focus?.operation !== 'recluster') return;
+    const key = `${focus.hash}:${focus.operation}`;
+    if (reclusterToastKeyRef.current === key) return;
+    reclusterToastKeyRef.current = key;
+    showToast('正在重组关联', 'success');
+  }, [focus?.hash, focus?.operation, isFocusLoading]);
 
   useEffect(() => {
     void ensureNotes();
-    Promise.all([
-      ensureMindNodes(),
-      fetch('/api/user/preferences').then(r => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([nodes, prefs]) => {
-      if (prefs?.excludedNodeIds?.length) {
-        setForcedBackgroundNodeIds(new Set(prefs.excludedNodeIds as string[]));
+    ensureMindNodes().then(async loadedNodes => {
+      const cachedPreferences = getCachedMindmapPreferences();
+
+      // 从其他页面回到脑图时，先使用当前登录会话内已经验证过的节点与聚合结果。
+      // 这一步不请求 AI；后台请求仅负责校验是否有其他页面或设备带来的结构变动。
+      if (cachedPreferences) {
+        setHasEverAddedMindNode(cachedPreferences.hasEverAddedMindNode);
+        await hydrateMindmapFocus(loadedNodes, false);
+        setPreferencesReady(true);
+
+        void Promise.all([refreshMindNodes(), ensureMindmapPreferences(true)])
+          .then(async ([latestNodes, preferences]) => {
+            setHasEverAddedMindNode(preferences.hasEverAddedMindNode);
+            await hydrateMindmapFocus(latestNodes);
+          })
+          .catch(() => {
+            // 已有一份可展示的会话内旧图时保留它，并交给现有读取失败弹窗处理。
+            markMindmapReadError(loadedNodes);
+          });
+        return;
       }
-      if (prefs?.focusResult) {
-        setPersistedFocusResult(prefs.focusResult);
+
+      try {
+        const preferences = await ensureMindmapPreferences();
+        setHasEverAddedMindNode(preferences.hasEverAddedMindNode);
+        await hydrateMindmapFocus(loadedNodes);
+      } catch {
+        // 读取失败时只展示散点，必须由用户决定是否重试读取。
+        markMindmapReadError(loadedNodes);
+        setNeedsManualReanalysis(true);
+      } finally {
+        setPreferencesReady(true);
       }
-      return prepareMindmapFocus(nodes, {
-        forcedRootNodeId: (prefs?.manualRootNodeId as string) ?? undefined,
-        forcedBackgroundNodes: (prefs?.excludedNodeIds as string[]) ?? undefined,
-      });
     }).catch(() => setLoadError(true));
   }, []);
+
+  useEffect(() => {
+    if (!preferencesReady || mindNodes === null) return;
+    const demoClosed = window.localStorage.getItem(MINDMAP_DEMO_CLOSED_KEY) === 'true';
+    const frame = requestAnimationFrame(() => {
+      setHasClosedDemo(demoClosed);
+      if (nodes.length === 0 && !hasEverAddedMindNode && !demoClosed) {
+        setIsDemoOpen(true);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [preferencesReady, mindNodes, nodes.length, hasEverAddedMindNode]);
+
+  function handleCloseDemo() {
+    window.localStorage.setItem(MINDMAP_DEMO_CLOSED_KEY, 'true');
+    setHasClosedDemo(true);
+    setIsDemoOpen(false);
+  }
 
   function retryLoad() {
     setLoadError(false);
     ensureMindNodes()
-      .then(nodes => prepareMindmapFocus(nodes))
+      .then(async loadedNodes => {
+        const preferences = await ensureMindmapPreferences(true);
+        setHasEverAddedMindNode(preferences.hasEverAddedMindNode);
+        await hydrateMindmapFocus(loadedNodes);
+        setPreferencesReady(true);
+      })
       .catch(() => setLoadError(true));
   }
 
@@ -180,19 +245,9 @@ export default function MindMapPage() {
     setIsSavingRoot(true);
 
     try {
-      const response = await fetch('/api/user/preferences', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ manualRootNodeId: nodeId }),
-      });
-      if (!response.ok) throw new Error('PREFERENCE_SAVE_FAILED');
-
       setSelectedNodeId(null);
       setSelectedFocusResult(null);
-      await prepareMindmapFocus(nodes, {
-        forcedRootNodeId: nodeId,
-        forcedBackgroundNodes: [...forcedBackgroundNodeIds],
-      });
+      await setManualRootAndRecluster(nodes, nodeId);
     } catch {
       showToast('根节点保存失败，请重试', 'error');
     } finally {
@@ -204,19 +259,8 @@ export default function MindMapPage() {
     setClusterActionTarget(nodeId);
   }
 
-  function handleConfirmRemoveFromCluster(nodeId: string) {
-    const next = new Set(forcedBackgroundNodeIds);
-    next.add(nodeId);
-    setForcedBackgroundNodeIds(next);
-
-    const nextArr = [...next];
-    fetch('/api/user/preferences', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ excludedNodeIds: nextArr }),
-    }).catch(() => {});
-
-    removeNodeFromFocusCluster(nodeId);
+  async function handleConfirmRemoveFromCluster(nodeId: string) {
+    await moveNodeToBackground(nodeId);
     if (selectedFocusResult) {
       setSelectedFocusResult({
         ...selectedFocusResult,
@@ -236,11 +280,6 @@ export default function MindMapPage() {
     setDeleteTarget(null);
     setSelectedNodeId(null);
     setSelectedFocusResult(null);
-    if (forcedBackgroundNodeIds.has(nodeId)) {
-      const next = new Set(forcedBackgroundNodeIds);
-      next.delete(nodeId);
-      setForcedBackgroundNodeIds(next);
-    }
   }
 
   function handleScatterDeleteClick(nodeId: string) {
@@ -252,14 +291,6 @@ export default function MindMapPage() {
     setIsDeletingRoot(true);
 
     try {
-      const response = await fetch('/api/user/preferences', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ manualRootNodeId: null, focusResult: null }),
-      });
-      if (!response.ok) throw new Error('PREFERENCE_CLEAR_FAILED');
-
-      setPersistedFocusResult(null);
       await deleteNodeFromCache(nodeId);
       setRootDeleteTarget(null);
       setSelectedNodeId(null);
@@ -332,14 +363,21 @@ export default function MindMapPage() {
 
   return (
     <main className="app-page min-h-[100dvh] pb-[72px] px-[24px]">
-      <h1 className="page-title pt-[var(--space-48)] pb-[var(--space-8)]">脑图</h1>
+      <div className="mindmap-title-row pt-[var(--space-48)] pb-[var(--space-8)]">
+        <h1 className="page-title">脑图</h1>
+        {hasClosedDemo && (
+          <button className="mindmap-demo-entry" type="button" onClick={() => setIsDemoOpen(true)}>查看示例</button>
+        )}
+      </div>
       {nodes.length > 0 && (
         <p className="text-[13px] text-[var(--text-hint)] mb-[var(--space-24)]">
           {nodes.length} 个观点已沉淀
         </p>
       )}
 
-      {mindNodes === null && !loadError ? (
+      {isDemoOpen ? (
+        <MindmapDemo onClose={handleCloseDemo} />
+      ) : mindNodes === null && !loadError ? (
         <LoadingView />
       ) : mindNodes === null && loadError ? (
         <div className="text-center py-[var(--space-48)]">
@@ -353,6 +391,8 @@ export default function MindMapPage() {
         </div>
       ) : nodes.length === 0 ? (
         <EmptyState lines={['还没有沉淀的想法', '笔记详情中点击 + 开始沉淀吧']} />
+      ) : !preferencesReady ? (
+        <LoadingView />
       ) : (
         <div
           className={`mindmap-scroll${isPanning ? ' mindmap-scroll--panning' : ''}`}
@@ -403,20 +443,31 @@ export default function MindMapPage() {
             })}
           </div>
 
-          {isFocusLoading && (
+          {isFocusLoading && focus?.operation === 'initial' && !focus.result && (
             <div className="mindmap-preparing" role="status" aria-live="polite">
               <div className="mindmap-preparing-dots" aria-hidden="true"><span /><span /><span /></div>
               <p>Hunter 正在整理灵感…</p>
               <small>正在生成关联关系</small>
             </div>
           )}
+          {isFocusLoading && focus?.operation === 'append' && (
+            <p className="mindmap-update-status" role="status">发现新观点，正在更新关联</p>
+          )}
         </div>
       )}
 
-      {focus?.hash === hash && focus.status === 'error' && nodes.length > 0 && (
-        <p className="text-center text-[13px] text-[var(--text-hint)] mt-[var(--space-16)]">
-          暂未生成关联关系，已为你展示基础结构
-        </p>
+      {needsManualReanalysis && !readyFocus && !isFocusLoading && nodes.length >= 4 && (
+        <div className="text-center mt-[var(--space-16)]">
+          <button
+            className="text-[14px] text-[var(--brand)] underline cursor-pointer bg-transparent border-none"
+            onClick={() => {
+              setNeedsManualReanalysis(false);
+              void prepareMindmapFocus(nodes, { operation: 'initial' });
+            }}
+          >
+            重新分析关联
+          </button>
+        </div>
       )}
 
       {selectedNode && !isCluster && (
@@ -469,6 +520,36 @@ export default function MindMapPage() {
           mode="root"
           onDelete={() => void handleConfirmRootDelete(rootDeleteTarget)}
           onCancel={() => setRootDeleteTarget(null)}
+        />
+      )}
+
+      {focus?.hash === hash && focus.status === 'error' && (
+        <NodeActionDialog
+          mode={focus.errorKind === 'read' ? 'retry-read' : 'retry-analysis'}
+          onCancel={dismissMindmapError}
+          onDelete={() => {
+            if (focus.errorKind === 'read') {
+              void ensureMindmapPreferences(true)
+                .then(() => hydrateMindmapFocus(nodes, false))
+                .then(() => setNeedsManualReanalysis(true))
+                .catch(() => {
+                  setNeedsManualReanalysis(true);
+                  markMindmapReadError(nodes);
+                });
+              return;
+            }
+            const previous = focus.result;
+            const classified = new Set(previous ? [
+              previous.rootNodeId,
+              ...previous.primaryRelated,
+              ...previous.secondaryRelated,
+              ...previous.backgroundNodes,
+            ] : []);
+            const newNodeId = nodes.find(node => !classified.has(node.id))?.id;
+            void prepareMindmapFocus(nodes, focus.operation === 'append' && newNodeId
+              ? { operation: 'append', newNodeId }
+              : { operation: 'recluster' });
+          }}
         />
       )}
     </main>
