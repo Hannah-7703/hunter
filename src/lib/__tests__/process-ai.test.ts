@@ -46,7 +46,50 @@ describe('AI call budget', () => {
     const response = await phaseB(request({ original: 'test input', keyPoints: [{ id: 'k', summary: 'point', detail: '' }] }));
     expect(response.status).toBe(200);
     expect(mocks.deepseekChat).toHaveBeenCalledTimes(1);
-    expect(mocks.deepseekChat.mock.calls[0][1]).toMatchObject({ max_tokens: 4096, timeout: 30000 });
+    expect(mocks.deepseekChat.mock.calls[0][1]).toMatchObject({ max_tokens: 4096, timeout: 60000 });
+  });
+
+  it('preserves complete titles and summaries instead of truncating them', async () => {
+    const title = '这是一条超过二十个字但必须完整保留的笔记标题内容';
+    const keyPointSummary = '这是一条超过二十四个字但不能被机械截断的普通观点摘要';
+    const emotionSummary = '这是一条超过二十四个字但不能被机械截断的情绪洞察摘要';
+    const phaseBSummary = '这是一条超过二十四个字但不能被机械截断的深度分析观点';
+
+    mocks.deepseekChat.mockResolvedValueOnce({
+      content: JSON.stringify({
+        hasSubstance: true,
+        title,
+        cleanedOriginal: '完整原文',
+        keyPoints: [{ summary: keyPointSummary, detail: '观点详情' }],
+        emotionInsight: {
+          present: true,
+          valence: 'negative',
+          summary: emotionSummary,
+          detail: '情绪详情',
+        },
+      }),
+    });
+
+    const phaseAResult = await phaseA(request({ content: 'test input', fromVoice: false }));
+    const phaseABody = await phaseAResult.json();
+    expect(phaseABody.title).toBe(title);
+    expect(phaseABody.keyPoints[0].summary).toBe(keyPointSummary);
+    expect(phaseABody.deepThinking.emotionInsight.summary).toBe(emotionSummary);
+
+    mocks.deepseekChat.mockResolvedValueOnce({
+      content: JSON.stringify({
+        question: [{ summary: phaseBSummary, detail: '具体分析' }],
+        breakdown: [],
+        expand: [],
+      }),
+    });
+
+    const phaseBResult = await phaseB(request({
+      original: 'test input',
+      keyPoints: [{ id: 'k', summary: 'point', detail: '' }],
+    }));
+    const phaseBBody = await phaseBResult.json();
+    expect(phaseBBody.deepThinking.question[0].summary).toBe(phaseBSummary);
   });
 
   it.each([

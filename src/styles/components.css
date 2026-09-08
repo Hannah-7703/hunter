@@ -243,6 +243,7 @@
   backdrop-filter: blur(16px) saturate(112%);
   -webkit-backdrop-filter: blur(16px) saturate(112%);
   transform: translateX(-50%);
+  z-index: 500;
 }
 .bottom-nav-item {
   display: flex;
@@ -882,6 +883,179 @@
   border-bottom-color: var(--brand);
 }
 
+/* ===== AI Notes — 新记录的渐进呈现 ===== */
+.ai-notes-reveal {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: ai-notes-reveal-in 220ms cubic-bezier(.23,1,.32,1) forwards;
+}
+.ai-notes-reveal--insight {
+  animation-delay: 120ms;
+}
+.ai-notes-walnut-clip {
+  position: relative;
+  top: -2px;
+  display: block;
+  width: 36px;
+  height: 36px;
+  margin-left: -4px;
+  overflow: hidden;
+  flex: none;
+}
+.ai-notes-walnut {
+  --walnut-entry-delay: 0ms;
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 36px;
+  height: 36px;
+  pointer-events: none;
+  transform-origin: 50% 100%;
+  will-change: transform;
+  animation: ai-notes-walnut-peek 280ms cubic-bezier(.23,1,.32,1) var(--walnut-entry-delay) both;
+}
+.ai-notes-walnut--delayed {
+  --walnut-entry-delay: 360ms;
+}
+.ai-notes-walnut-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+}
+.ai-notes-walnut-image--neutral {
+  opacity: 1;
+}
+.ai-notes-walnut--positive .ai-notes-walnut-image--neutral,
+.ai-notes-walnut--negative .ai-notes-walnut-image--neutral {
+  animation: ai-notes-walnut-expression-out 90ms cubic-bezier(.23,1,.32,1) calc(var(--walnut-entry-delay) + 340ms) forwards;
+}
+.ai-notes-walnut--positive .ai-notes-walnut-image--happy,
+.ai-notes-walnut--negative .ai-notes-walnut-image--emo {
+  animation: ai-notes-walnut-expression-in 120ms cubic-bezier(.23,1,.32,1) calc(var(--walnut-entry-delay) + 340ms) both;
+}
+.ai-notes-walnut--neutral .ai-notes-walnut-image--neutral {
+  opacity: 1;
+}
+.ai-notes-walnut--neutral .ai-notes-walnut-image--blink {
+  opacity: 0;
+  animation: ai-notes-walnut-blink 250ms steps(1,end) calc(var(--walnut-entry-delay) + 340ms) both;
+}
+@keyframes ai-notes-walnut-peek {
+  0% { transform: translateY(28px) scale(.98); }
+  72% { transform: translateY(-2px) scale(1.02); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes ai-notes-walnut-expression-in {
+  to { opacity: 1; }
+}
+@keyframes ai-notes-walnut-expression-out {
+  to { opacity: 0; }
+}
+
+@keyframes ai-notes-walnut-blink {
+  0%, 28% { opacity: 0; }
+  29%, 71% { opacity: 1; }
+  72%, 100% { opacity: 0; }
+}
+.tabs--progressive .tab {
+  animation: ai-notes-tab-in 180ms cubic-bezier(.23,1,.32,1) both;
+}
+.phase-b-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+.phase-b-skeleton {
+  min-height: 120px;
+  padding: 16px;
+  border: 1px solid rgba(76, 89, 49, .08);
+  border-radius: 16px;
+  background: #F8F9F5;
+}
+.phase-b-skeleton-summary,
+.phase-b-skeleton-line {
+  display: block;
+  border-radius: 999px;
+  background: rgba(126, 142, 104, .12);
+}
+.phase-b-skeleton-summary {
+  width: 38%;
+  height: 16px;
+  margin-bottom: 14px;
+}
+.phase-b-skeleton-line {
+  width: 100%;
+  height: 12px;
+  margin-top: 10px;
+}
+.phase-b-skeleton-line--short {
+  width: 72%;
+}
+.phase-b-item-reveal {
+  opacity: 0;
+  transform: translateY(-8px);
+  animation: phase-b-item-drop-in 220ms cubic-bezier(.23,1,.32,1) both;
+}
+.phase-b-item-reveal:nth-child(2) {
+  animation-delay: 60ms;
+}
+.phase-b-item-reveal:nth-child(3) {
+  animation-delay: 120ms;
+}
+@keyframes ai-notes-reveal-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes ai-notes-tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes phase-b-item-drop-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-notes-reveal {
+    transform: none;
+    animation-duration: 120ms;
+  }
+  .ai-notes-walnut--delayed {
+    --walnut-entry-delay: 160ms;
+  }
+  .ai-notes-walnut {
+    animation: ai-notes-walnut-peek-reduced 160ms cubic-bezier(.23,1,.32,1) var(--walnut-entry-delay) both;
+  }
+  .ai-notes-walnut-image {
+    animation-duration: 1ms !important;
+  }
+  .tabs--progressive .tab {
+    transform: none;
+    animation-duration: 120ms;
+  }
+  .phase-b-item-reveal {
+    transform: none;
+    animation-duration: 120ms;
+    animation-delay: 0ms;
+  }
+}
+@keyframes ai-notes-walnut-peek-reduced {
+  from { transform: translateY(8px) scale(.99); }
+  to { transform: translateY(0) scale(1); }
+}
+
 /* ===== AudioBar ===== */
 .audio-bar {
   display: flex;
@@ -1333,7 +1507,72 @@
 
 /* ===== MindMap Phase 3 v1 — 圆点过渡 ===== */
 .mind-dot-wrapper {
-  transition: left 500ms ease, top 500ms ease;
+  transition: left 500ms cubic-bezier(.22,.82,.25,1), top 500ms cubic-bezier(.22,.82,.25,1);
+}
+.mind-dot-wrapper--full.mind-dot-wrapper--root {
+  transition: left 350ms cubic-bezier(.77,0,.175,1), top 350ms cubic-bezier(.77,0,.175,1);
+}
+.mind-dot-wrapper--full.mind-dot-wrapper--primary {
+  transition: left 700ms cubic-bezier(.22,.82,.25,1) 250ms, top 700ms cubic-bezier(.22,.82,.25,1) 250ms;
+}
+.mind-dot-wrapper--full.mind-dot-wrapper--secondary,
+.mind-dot-wrapper--full.mind-dot-wrapper--background {
+  transition: left 600ms cubic-bezier(.22,.82,.25,1) 350ms, top 600ms cubic-bezier(.22,.82,.25,1) 350ms;
+}
+.mind-dot-wrapper--light {
+  transition: left 280ms cubic-bezier(.22,.82,.25,1), top 280ms cubic-bezier(.22,.82,.25,1);
+}
+.mindmap-edge {
+  opacity: 0;
+  transition: opacity 200ms cubic-bezier(.23,1,.32,1);
+}
+.mindmap-edge--visible {
+  opacity: 1;
+}
+.mindmap-formation-notice {
+  position: fixed;
+  left: 50%;
+  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  z-index: 120;
+  max-width: calc(100vw - 48px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: var(--radius-bullet);
+  background: var(--text-primary);
+  color: white;
+  font-family: var(--font-body), var(--font-cjk), "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 1;
+  transform: translate(-50%, 0);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+@starting-style {
+  .mindmap-formation-notice {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+}
+.mindmap-formation-notice--leaving {
+  opacity: 0;
+  transform: translate(-50%, 6px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mind-dot-wrapper,
+  .mind-dot-wrapper--full.mind-dot-wrapper--root,
+  .mind-dot-wrapper--full.mind-dot-wrapper--primary,
+  .mind-dot-wrapper--full.mind-dot-wrapper--secondary,
+  .mind-dot-wrapper--full.mind-dot-wrapper--background,
+  .mind-dot-wrapper--light {
+    transition: none;
+  }
+  .mindmap-edge,
+  .mindmap-formation-notice {
+    transition-duration: 120ms;
+  }
 }
 
 /* ===== MindMap Phase 3 v1 — rootNode 文字标签 ===== */

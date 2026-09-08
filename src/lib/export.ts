@@ -1,4 +1,4 @@
-import type { Note } from '@/shared/types';
+import type { DeepThinking, Note } from '@/shared/types';
 
 const WINDOWS_RESERVED = /^(CON|NUL|PRN|AUX|COM[1-9]|LPT[1-9])$/i;
 
@@ -40,6 +40,11 @@ export function buildMarkdown(note: Note): string {
   md += `---\n\n`;
   md += `## 提炼观点\n\n`;
 
+  const emotionInsight = note.deepThinking.emotionInsight;
+  if (emotionInsight?.present) {
+    md += `- **${emotionInsight.summary}**：${emotionInsight.detail}\n`;
+  }
+
   for (const kp of note.keyPoints) {
     md += `- **${kp.summary}**：${kp.detail}\n`;
   }
@@ -48,7 +53,7 @@ export function buildMarkdown(note: Note): string {
   md += `## 深度分析\n\n`;
 
   const dt = note.deepThinking;
-  const tabs: { key: keyof typeof dt; title: string }[] = [
+  const tabs: { key: keyof Pick<DeepThinking, 'question' | 'breakdown' | 'expand'>; title: string }[] = [
     { key: 'breakdown', title: '拆解' },
     { key: 'expand', title: '拓展' },
     { key: 'question', title: '拷问' },

@@ -12,6 +12,9 @@ function findItemDetail(note: Note, itemId: string): string | null {
   for (const kp of note.keyPoints) {
     if (kp.id === itemId) return kp.detail;
   }
+  if (note.deepThinking.emotionInsight?.present && note.deepThinking.emotionInsight.id === itemId) {
+    return note.deepThinking.emotionInsight.detail;
+  }
   for (const tab of ['question', 'breakdown', 'expand'] as const) {
     for (const item of note.deepThinking[tab]) {
       if (item.id === itemId) return item.detail;

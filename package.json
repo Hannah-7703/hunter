@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:preview": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/db-remote.ps1 -Target preview",
+    "db:preview:apply": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/db-remote.ps1 -Target preview -Apply",
+    "db:production": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/db-remote.ps1 -Target production",
+    "db:production:apply": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/db-remote.ps1 -Target production -Apply"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",

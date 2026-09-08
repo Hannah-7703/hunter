@@ -11,11 +11,7 @@ export interface ProcessResponse {
   original: string;
   keyPoints: KeyPoint[];
   hasSubstance: boolean;
-  deepThinking: {
-    question: DTItem[];
-    breakdown: DTItem[];
-    expand: DTItem[];
-  };
+  deepThinking: DeepThinking;
 }
 
 // ===== 数据模型 =====
@@ -43,7 +39,18 @@ export interface DeepThinking {
   question: DTItem[];
   breakdown: DTItem[];
   expand: DTItem[];
+  emotionInsight?: EmotionInsight;
 }
+
+export interface EmotionInsight {
+  id: string;
+  present: boolean;
+  valence: 'positive' | 'negative' | 'neutral';
+  summary: string;
+  detail: string;
+}
+
+export type DeepThinkingContent = Pick<DeepThinking, 'question' | 'breakdown' | 'expand'>;
 
 export interface DTItem {
   id: string;                    // AI: dt_${noteId}_${tab}_${index} / 用户: udt_${Date.now()}

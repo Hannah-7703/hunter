@@ -1,4 +1,4 @@
-import type { ProcessRequest, ProcessResponse, DeepThinking, KeyPoint } from '@/shared/types';
+import type { DeepThinkingContent, EmotionInsight, ProcessRequest, ProcessResponse, KeyPoint } from '@/shared/types';
 
 export class ProcessApiError extends Error {
   constructor(
@@ -36,8 +36,12 @@ export function getProcessErrorMessage(error: unknown): string {
 export async function process(input: ProcessRequest): Promise<ProcessResponse> {
   const phaseA = await processPhaseA(input);
   if (!phaseA.hasSubstance) return phaseA;
-  const deepThinking = await processPhaseB(phaseA.original, phaseA.keyPoints);
-  return { ...phaseA, deepThinking };
+  const deepThinking = await processPhaseB(
+    phaseA.original,
+    phaseA.keyPoints,
+    phaseA.deepThinking.emotionInsight,
+  );
+  return { ...phaseA, deepThinking: { ...phaseA.deepThinking, ...deepThinking } };
 }
 
 export async function processPhaseA(input: ProcessRequest): Promise<ProcessResponse> {
@@ -47,10 +51,14 @@ export async function processPhaseA(input: ProcessRequest): Promise<ProcessRespo
   });
 }
 
-export async function processPhaseB(original: string, keyPoints: KeyPoint[]): Promise<DeepThinking> {
-  const data = await fetchApi<{ deepThinking: DeepThinking }>('/api/process/phase-b', {
+export async function processPhaseB(
+  original: string,
+  keyPoints: KeyPoint[],
+  emotionInsight?: EmotionInsight,
+): Promise<DeepThinkingContent> {
+  const data = await fetchApi<{ deepThinking: DeepThinkingContent }>('/api/process/phase-b', {
     method: 'POST',
-    body: JSON.stringify({ original, keyPoints }),
+    body: JSON.stringify({ original, keyPoints, emotionInsight }),
   });
   return data.deepThinking;
 }

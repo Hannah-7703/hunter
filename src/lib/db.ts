@@ -20,6 +20,8 @@ export interface CreateAnonymousFeedbackInput {
   page: string;
 }
 
+export type ActivityEventName = 'mindmap_viewed' | 'mindmap_node_opened';
+
 function createSupabaseClient() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -52,6 +54,20 @@ export async function dbCreateAnonymousFeedback(input: CreateAnonymousFeedbackIn
 
   if (error) {
     throw new DatabaseOperationError('FEEDBACK_CREATE_FAILED', error.code ?? null);
+  }
+}
+
+export async function dbCreateActivityEvent(
+  eventName: ActivityEventName,
+  context: RequestContext,
+): Promise<void> {
+  requireUserId(context);
+  const { error } = await getSupabaseClient()
+    .from('activity_events')
+    .insert({ user_id: context.userId, event_name: eventName });
+
+  if (error) {
+    throw new DatabaseOperationError('ACTIVITY_EVENT_CREATE_FAILED', error.code ?? null);
   }
 }
 
@@ -214,6 +230,10 @@ export async function dbDeleteNoteById(id: string, context: RequestContext): Pro
 
     for (const kp of note.keyPoints) {
       itemMap.set(kp.id, { summary: kp.summary, detail: kp.detail });
+    }
+    const emotionInsight = note.deepThinking.emotionInsight;
+    if (emotionInsight?.present) {
+      itemMap.set(emotionInsight.id, { summary: emotionInsight.summary, detail: emotionInsight.detail });
     }
     for (const tab of ['question', 'breakdown', 'expand'] as const) {
       for (const dt of note.deepThinking[tab]) {

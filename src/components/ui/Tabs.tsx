@@ -4,11 +4,12 @@ interface TabsProps {
   tabs: string[];
   activeTab: string;
   onTabChange: (tab: string) => void;
+  className?: string;
 }
 
-export default function Tabs({ tabs, activeTab, onTabChange }: TabsProps) {
+export default function Tabs({ tabs, activeTab, onTabChange, className = '' }: TabsProps) {
   return (
-    <div className="tabs">
+    <div className={`tabs ${className}`.trim()}>
       {tabs.map(tab => (
         <button
           key={tab}

@@ -5,6 +5,7 @@ interface MindNodeProps {
   y: number;
   onClick: () => void;
   highlighted?: boolean;
+  motionMode?: 'full' | 'light';
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -21,12 +22,12 @@ const SIZE_MAP: Record<string, number> = {
   background: 8,
 };
 
-export default function MindNode({ type, label, x, y, onClick, highlighted }: MindNodeProps) {
+export default function MindNode({ type, label, x, y, onClick, highlighted, motionMode }: MindNodeProps) {
   const size = SIZE_MAP[type];
 
   return (
     <div
-      className="mind-dot-wrapper"
+      className={`mind-dot-wrapper${motionMode ? ` mind-dot-wrapper--${motionMode}` : ''} mind-dot-wrapper--${type}`}
       style={{
         position: 'absolute',
         left: x,
@@ -36,7 +37,6 @@ export default function MindNode({ type, label, x, y, onClick, highlighted }: Mi
         overflow: 'visible',
         transform: 'translate(-50%, -50%)',
         opacity: highlighted === false ? 0.4 : 1,
-        transition: 'left 500ms ease, top 500ms ease',
       }}
     >
       <button
