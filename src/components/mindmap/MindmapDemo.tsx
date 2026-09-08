@@ -67,7 +67,7 @@ export default function MindmapDemo({ onClose }: MindmapDemoProps) {
                 <p>最近有一些热门电影上映，想挑一个周末去看电影。尽量在下午吧，早上睡个懒觉，起床吃午饭、化妆后再出门。</p>
               </section>
               <section className="mindmap-demo-points-card">
-                <p className="mindmap-demo-section-label">⌄&nbsp; 提炼观点</p>
+                <p className="mindmap-demo-section-label">⌄&nbsp; 看见自己</p>
                 <div className="mindmap-demo-point-row mindmap-demo-point-row--target">
                   <div><b>想周末看电影</b><span>最近热门电影上映，计划周末挑一个时间去看。</span></div>
                   <span className="mindmap-demo-plus-real">+</span>

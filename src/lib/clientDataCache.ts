@@ -14,6 +14,21 @@ import {
 type FocusStatus = 'loading' | 'ready' | 'error';
 export type FocusOperation = 'initial' | 'append' | 'recluster';
 export type FocusErrorKind = 'read' | 'analysis';
+export type MindmapMotionCause =
+  | 'first-formation'
+  | 'manual-root-change'
+  | 'rebuild-after-empty'
+  | 'node-added'
+  | 'node-removed'
+  | 'root-deleted';
+export type MindmapMotionMode = 'full' | 'light';
+
+export interface MindmapMotionIntent {
+  id: number;
+  cause: MindmapMotionCause;
+  mode: MindmapMotionMode;
+  status: 'pending' | 'ready' | 'completed';
+}
 
 interface FocusCacheEntry {
   hash: string;
@@ -34,12 +49,14 @@ interface ClientDataCacheState {
   notes: Note[] | null;
   mindNodes: MindNode[] | null;
   focus: FocusCacheEntry | null;
+  mindmapMotion: MindmapMotionIntent | null;
 }
 
 let state: ClientDataCacheState = {
   notes: null,
   mindNodes: null,
   focus: null,
+  mindmapMotion: null,
 };
 
 const listeners = new Set<() => void>();
@@ -48,6 +65,7 @@ let mindNodesRequest: Promise<MindNode[]> | null = null;
 let mindNodesGeneration = 0;
 let cacheGeneration = 0;
 let focusRequestSeq = 0;
+let mindmapMotionSeq = 0;
 let persistedFocusResult: FocusResult | null = null;
 let persistedManualRootNodeId: string | null = null;
 let persistedExcludedNodeIds: string[] = [];
@@ -81,6 +99,20 @@ export function getCachedMindmapPreferences(): MindmapPreferences | null {
 function publish(next: Partial<ClientDataCacheState>) {
   state = { ...state, ...next };
   listeners.forEach(listener => listener());
+}
+
+function createMindmapMotion(cause: MindmapMotionCause, status: MindmapMotionIntent['status']): MindmapMotionIntent {
+  const mode: MindmapMotionMode = (
+    cause === 'first-formation'
+    || cause === 'manual-root-change'
+    || cause === 'rebuild-after-empty'
+  ) ? 'full' : 'light';
+  return { id: ++mindmapMotionSeq, cause, mode, status };
+}
+
+export function completeMindmapMotion(id: number): void {
+  if (state.mindmapMotion?.id !== id || state.mindmapMotion.status !== 'ready') return;
+  publish({ mindmapMotion: { ...state.mindmapMotion, status: 'completed' } });
 }
 
 function subscribe(listener: () => void) {
@@ -323,7 +355,7 @@ export async function deleteNodeFromCache(nodeId: string): Promise<void> {
     persistedManualRootNodeId = null;
     persistedFocusResult = null;
     persistedExcludedNodeIds = persistedExcludedNodeIds.filter(id => id !== nodeId);
-    publish({ focus: null });
+    publish({ focus: null, mindmapMotion: null });
     await persistMindmapPreferences();
     if (nodes.length >= 4) {
       await prepareMindmapFocus(nodes, { operation: 'recluster', reason: 'root-deleted' });
@@ -340,7 +372,10 @@ export async function deleteNodeFromCache(nodeId: string): Promise<void> {
       secondaryRelated: persistedFocusResult.secondaryRelated.filter(id => id !== nodeId),
       backgroundNodes: persistedFocusResult.backgroundNodes.filter(id => id !== nodeId),
     };
-    publish({ focus: { hash: nodesHash(nodes), status: 'ready', result: persistedFocusResult } });
+    publish({
+      focus: { hash: nodesHash(nodes), status: 'ready', result: persistedFocusResult },
+      mindmapMotion: createMindmapMotion('node-removed', 'ready'),
+    });
   }
   await persistMindmapPreferences();
 }
@@ -357,6 +392,7 @@ export interface FocusOptions {
   reason?: 'initial' | 'root-deleted';
   operation?: FocusOperation;
   newNodeId?: string;
+  motionCause?: MindmapMotionCause;
 }
 
 function focusNodeIds(result: FocusResult): Set<string> {
@@ -415,7 +451,7 @@ function setFocusError(
   errorKind: FocusErrorKind,
   operation?: FocusOperation,
 ) {
-  publish({ focus: { hash, status: 'error', result, errorKind, operation } });
+  publish({ focus: { hash, status: 'error', result, errorKind, operation }, mindmapMotion: null });
 }
 
 export function dismissMindmapError() {
@@ -423,7 +459,7 @@ export function dismissMindmapError() {
   if (state.focus.result) {
     publish({ focus: { ...state.focus, status: 'ready', errorKind: undefined } });
   } else {
-    publish({ focus: null });
+    publish({ focus: null, mindmapMotion: null });
   }
 }
 
@@ -451,14 +487,14 @@ export async function hydrateMindmapFocus(nodes: MindNode[], allowInitialAnalysi
   }
 
   if (persistedFocusResult && nodeIds.has(persistedFocusResult.rootNodeId) && hasSameNodeSet(nodes, persistedFocusResult)) {
-    publish({ focus: { hash, status: 'ready', result: persistedFocusResult } });
+    publish({ focus: { hash, status: 'ready', result: persistedFocusResult }, mindmapMotion: null });
     return;
   }
 
   if (allowInitialAnalysis && nodes.length >= 4) {
     await prepareMindmapFocus(nodes, { operation: 'initial' });
   } else {
-    publish({ focus: null });
+    publish({ focus: null, mindmapMotion: null });
   }
 }
 
@@ -481,12 +517,22 @@ export async function appendMindmapNode(nodeId: string): Promise<void> {
 
 export async function prepareMindmapFocus(nodes: MindNode[], options?: FocusOptions): Promise<void> {
   if (nodes.length === 0) {
-    publish({ focus: null });
+    publish({ focus: null, mindmapMotion: null });
     return;
   }
 
   const hash = nodesHash(nodes);
   const operation = options?.operation ?? (options?.reason === 'root-deleted' ? 'recluster' : 'initial');
+  const motionCause = options?.motionCause
+    ?? (operation === 'append'
+      ? 'node-added'
+      : options?.reason === 'root-deleted'
+        ? 'root-deleted'
+        : operation === 'recluster'
+          ? 'manual-root-change'
+          : persistedHasEverAddedMindNode
+            ? 'rebuild-after-empty'
+            : 'first-formation');
   const forcedRootId = options?.forcedRootNodeId
     ?? persistedManualRootNodeId
     ?? (operation === 'append' ? persistedFocusResult?.rootNodeId : undefined);
@@ -496,7 +542,7 @@ export async function prepareMindmapFocus(nodes: MindNode[], options?: FocusOpti
   const requiresAnalysis = operation === 'append' || operation === 'recluster' || forcedRootId !== undefined || options?.reason === 'root-deleted';
 
   if (!requiresAnalysis && nodes.length < 4) {
-    publish({ focus: null });
+    publish({ focus: null, mindmapMotion: null });
     return;
   }
 
@@ -584,6 +630,7 @@ export async function prepareMindmapFocus(nodes: MindNode[], options?: FocusOpti
   const seq = ++focusRequestSeq;
   const previousResult = state.focus?.result ?? persistedFocusResult;
   const keepPreviousResult = operation === 'append' || operation === 'recluster';
+  const motion = createMindmapMotion(motionCause, 'pending');
   publish({
     focus: {
       hash,
@@ -591,6 +638,7 @@ export async function prepareMindmapFocus(nodes: MindNode[], options?: FocusOpti
       result: keepPreviousResult ? previousResult : null,
       operation,
     },
+    mindmapMotion: motion,
   });
 
   const request = fetch('/api/mind-nodes/focus', {
@@ -634,10 +682,10 @@ export async function prepareMindmapFocus(nodes: MindNode[], options?: FocusOpti
       }
       const result = normalizePersistedFocus(nextResult);
       if (!result) {
-        publish({ focus: null });
+        publish({ focus: null, mindmapMotion: null });
         return;
       }
-      publish({ focus: { hash, status: 'ready', result, operation } });
+      publish({ focus: { hash, status: 'ready', result, operation }, mindmapMotion: { ...motion, status: 'ready' } });
       persistedFocusResult = result;
       void persistFocusResultToServer(result);
     })
@@ -645,6 +693,7 @@ export async function prepareMindmapFocus(nodes: MindNode[], options?: FocusOpti
       if (seq !== focusRequestSeq) return;
       if (generation !== cacheGeneration) return;
       setFocusError(hash, keepPreviousResult ? previousResult : null, 'analysis', operation);
+      publish({ mindmapMotion: null });
     });
 
   activeFocusRequest = { key: requestKey, promise: request };
@@ -675,12 +724,14 @@ export async function moveNodeToBackground(nodeId: string): Promise<void> {
     backgroundNodes: [...bgSet],
   };
 
+  const motion = createMindmapMotion('node-removed', 'ready');
   publish({
     focus: {
       hash: state.focus.hash,
       status: 'ready',
       result: newResult,
     },
+    mindmapMotion: motion,
   });
 
   persistedFocusResult = newResult;
@@ -699,6 +750,7 @@ export async function setManualRootAndRecluster(nodes: MindNode[], nodeId: strin
     operation: 'recluster',
     forcedRootNodeId: nodeId,
     forcedBackgroundNodes: persistedExcludedNodeIds,
+    motionCause: 'manual-root-change',
   });
 }
 
@@ -708,12 +760,13 @@ export function warmApplicationData() {
 }
 
 export function clearClientCache() {
-  state = { notes: null, mindNodes: null, focus: null };
+  state = { notes: null, mindNodes: null, focus: null, mindmapMotion: null };
   notesRequest = null;
   mindNodesRequest = null;
   mindNodesGeneration += 1;
   cacheGeneration += 1;
   focusRequestSeq += 1;
+  mindmapMotionSeq = 0;
   persistedFocusResult = null;
   persistedManualRootNodeId = null;
   persistedExcludedNodeIds = [];

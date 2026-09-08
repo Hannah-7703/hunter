@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
+
 interface BulletCardProps {
   summary: string;
   detail: string;
@@ -10,16 +12,37 @@ interface BulletCardProps {
   plusDisabled?: boolean;
   plusPending?: boolean;
   guideTarget?: boolean;
+  autoFocusSummary?: boolean;
+  onEmptyBlur?: () => void;
 }
 
 export default function BulletCard({
   summary, detail, onSummaryChange, onDetailChange,
   plusSelected, onPlusClick, plusDisabled, plusPending, guideTarget,
+  autoFocusSummary, onEmptyBlur,
 }: BulletCardProps) {
+  const summaryRef = useRef<HTMLSpanElement>(null);
+  const detailRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (autoFocusSummary) summaryRef.current?.focus();
+  }, [autoFocusSummary]);
+
   return (
-    <div className="bullet-card">
+    <div
+      className="bullet-card"
+      onBlur={event => {
+        if (!onEmptyBlur) return;
+        const nextTarget = event.relatedTarget as Node | null;
+        if (nextTarget && event.currentTarget.contains(nextTarget)) return;
+        const currentSummary = summaryRef.current?.textContent?.trim() ?? '';
+        const currentDetail = detailRef.current?.textContent?.trim() ?? '';
+        if (!currentSummary && !currentDetail) onEmptyBlur();
+      }}
+    >
       <div className="bullet-card-row">
         <span
+          ref={summaryRef}
           className="bullet-card-summary"
           contentEditable
           suppressContentEditableWarning
@@ -47,6 +70,7 @@ export default function BulletCard({
         </span>
       </div>
       <span
+        ref={detailRef}
         className="bullet-card-detail"
         contentEditable
         suppressContentEditableWarning

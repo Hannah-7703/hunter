@@ -3,7 +3,7 @@ import { deepseekChat } from '@/lib/deepseekClient';
 import { validateSession } from '@/lib/auth';
 import { logError } from '@/lib/logger';
 import type { AiFailureCode } from '@/lib/diagnostics';
-import type { ProcessResponse, KeyPoint } from '@/shared/types';
+import type { EmotionInsight, ProcessResponse, KeyPoint } from '@/shared/types';
 
 function stripMarkdownCodeBlock(text: string): string {
   let cleaned = text.trim();
@@ -14,12 +14,16 @@ function stripMarkdownCodeBlock(text: string): string {
   return cleaned.trim();
 }
 
-function truncateSummary(text: string): string {
-  return text.length > 24 ? text.slice(0, 24) + '…' : text;
-}
-
-function truncateTitle(text: string): string {
-  return text.length > 20 ? text.slice(0, 20) : text;
+function parseEmotionInsight(value: unknown, id: string): EmotionInsight {
+  const empty: EmotionInsight = { id, present: false, valence: 'neutral', summary: '', detail: '' };
+  if (!value || typeof value !== 'object') return empty;
+  const insight = value as Record<string, unknown>;
+  if (!insight.present) return empty;
+  const valence = insight.valence;
+  const summary = typeof insight.summary === 'string' ? insight.summary.trim() : '';
+  const detail = typeof insight.detail === 'string' ? insight.detail.trim() : '';
+  if (!summary || !detail || !['positive', 'negative', 'neutral'].includes(String(valence))) return empty;
+  return { id, present: true, valence: valence as EmotionInsight['valence'], summary, detail };
 }
 
 class AiResponseParseError extends Error {}
@@ -34,9 +38,12 @@ function safeParsePhaseAResponse(raw: string): ProcessResponse {
   const defaults: ProcessResponse = {
     title: '',
     original: '',
-    keyPoints: [],
-    hasSubstance: false,
-    deepThinking: { question: [], breakdown: [], expand: [] },
+      keyPoints: [],
+      hasSubstance: false,
+      deepThinking: {
+        question: [], breakdown: [], expand: [],
+        emotionInsight: { id: '', present: false, valence: 'neutral', summary: '', detail: '' },
+      },
   };
 
   let json: Record<string, unknown>;
@@ -59,16 +66,21 @@ function safeParsePhaseAResponse(raw: string): ProcessResponse {
     .filter((kp: unknown) => kp && typeof kp === 'object')
     .map((kp: Record<string, unknown>, i: number) => ({
       id: `kp_${now}_${i}`,
-      summary: truncateSummary((kp.summary as string) ?? ''),
+      summary: ((kp.summary as string) ?? '').trim(),
       detail: (kp.detail as string) ?? '',
     }));
 
   return {
-    title: truncateTitle((json.title as string) ?? ''),
+    title: ((json.title as string) ?? '').trim(),
     original: cleanedOriginal,
     keyPoints,
     hasSubstance: true,
-    deepThinking: { question: [], breakdown: [], expand: [] },
+    deepThinking: {
+      question: [],
+      breakdown: [],
+      expand: [],
+      emotionInsight: parseEmotionInsight(json.emotionInsight, `ei_${now}`),
+    },
   };
 }
 
@@ -93,7 +105,7 @@ export async function POST(request: Request): Promise<Response> {
         original: '',
         keyPoints: [],
         hasSubstance: false,
-        deepThinking: { question: [], breakdown: [], expand: [] },
+        deepThinking: { question: [], breakdown: [], expand: [], emotionInsight: { id: '', present: false, valence: 'neutral', summary: '', detail: '' } },
       });
     }
 
@@ -104,7 +116,7 @@ export async function POST(request: Request): Promise<Response> {
         original: '',
         keyPoints: [],
         hasSubstance: false,
-        deepThinking: { question: [], breakdown: [], expand: [] },
+        deepThinking: { question: [], breakdown: [], expand: [], emotionInsight: { id: '', present: false, valence: 'neutral', summary: '', detail: '' } },
       });
     }
 

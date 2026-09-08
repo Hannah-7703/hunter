@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { MindNode as MindNodeType, Note } from '@/shared/types';
 import {
   ensureMindNodes,
@@ -10,6 +10,7 @@ import {
   hydrateMindmapFocus,
   markMindmapReadError,
   prepareMindmapFocus,
+  completeMindmapMotion,
   refreshMindNodes,
   moveNodeToBackground,
   setManualRootAndRecluster,
@@ -33,11 +34,56 @@ import LoadingView from '@/components/ui/LoadingView';
 import NodeActionDialog from '@/components/ui/NodeActionDialog';
 import MindmapDemo from '@/components/mindmap/MindmapDemo';
 import { showToast } from '@/components/ui/Toast';
+import { reportProductEvent } from '@/lib/clientDiagnostics';
 
 const SVG_WIDTH = 720;
 const SVG_HEIGHT = 900;
 const PAD = 80;
 const MINDMAP_DEMO_CLOSED_KEY = 'aha-hunter-mindmap-demo-closed';
+
+type MindmapAnimationPhase = 'idle' | 'moving' | 'lines-revealed' | 'notice' | 'notice-leaving';
+
+interface MindmapAnimationState {
+  motionId: number | null;
+  mode: 'full' | 'light' | null;
+  phase: MindmapAnimationPhase;
+}
+
+type MindmapAnimationAction =
+  | { type: 'START'; id: number; mode: 'full' | 'light' }
+  | { type: 'REVEAL_LINES'; id: number }
+  | { type: 'SHOW_NOTICE'; id: number }
+  | { type: 'LEAVE_NOTICE'; id: number }
+  | { type: 'FINISH'; id: number };
+
+const initialMindmapAnimationState: MindmapAnimationState = {
+  motionId: null,
+  mode: null,
+  phase: 'idle',
+};
+
+function mindmapAnimationReducer(
+  state: MindmapAnimationState,
+  action: MindmapAnimationAction,
+): MindmapAnimationState {
+  if (action.type === 'START') {
+    return { motionId: action.id, mode: action.mode, phase: 'moving' };
+  }
+  if (state.motionId !== action.id) return state;
+
+  switch (action.type) {
+    case 'REVEAL_LINES':
+      return { ...state, phase: 'lines-revealed' };
+    case 'SHOW_NOTICE':
+      return { ...state, phase: 'notice' };
+    case 'LEAVE_NOTICE':
+      return { ...state, phase: 'notice-leaving' };
+    case 'FINISH':
+      return initialMindmapAnimationState;
+    default:
+      return state;
+  }
+}
 
 function computeScatterLayout(nodes: MindNodeType[]): Map<string, { x: number; y: number }> {
   const layout = new Map<string, { x: number; y: number }>();
@@ -62,6 +108,10 @@ function buildItemMap(notes: Note[] | null): Map<string, { summary: string; deta
     for (const keyPoint of note.keyPoints) {
       map.set(keyPoint.id, { summary: keyPoint.summary, detail: keyPoint.detail });
     }
+    const emotionInsight = note.deepThinking.emotionInsight;
+    if (emotionInsight?.present) {
+      map.set(emotionInsight.id, { summary: emotionInsight.summary, detail: emotionInsight.detail });
+    }
     for (const tab of ['question', 'breakdown', 'expand'] as const) {
       for (const item of note.deepThinking[tab]) {
         map.set(item.id, { summary: item.summary, detail: item.detail });
@@ -72,16 +122,15 @@ function buildItemMap(notes: Note[] | null): Map<string, { summary: string; deta
 }
 
 export default function MindMapPage() {
-  const { notes, mindNodes, focus } = useClientDataCache();
+  const { notes, mindNodes, focus, mindmapMotion } = useClientDataCache();
   const nodes = useMemo(() => mindNodes ?? [], [mindNodes]);
   const [selectedFocusResult, setSelectedFocusResult] = useState<FocusResult | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [linesHash, setLinesHash] = useState<string | null>(null);
+  const [animation, dispatchAnimation] = useReducer(mindmapAnimationReducer, initialMindmapAnimationState);
   const [loadError, setLoadError] = useState(false);
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [needsManualReanalysis, setNeedsManualReanalysis] = useState(false);
   const [hasEverAddedMindNode, setHasEverAddedMindNode] = useState(false);
-  const [hasClosedDemo, setHasClosedDemo] = useState(false);
   const [isDemoOpen, setIsDemoOpen] = useState(false);
   const [clusterActionTarget, setClusterActionTarget] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -90,6 +139,8 @@ export default function MindMapPage() {
   const [isDeletingRoot, setIsDeletingRoot] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const reclusterToastKeyRef = useRef<string | null>(null);
+  const hasReportedMindmapViewRef = useRef(false);
+  const hasReportedMindmapNodeOpenRef = useRef(false);
   const panRef = useRef<{
     pointerId: number;
     startX: number;
@@ -117,6 +168,10 @@ export default function MindMapPage() {
   }, [focus?.hash, focus?.operation, isFocusLoading]);
 
   useEffect(() => {
+    if (!hasReportedMindmapViewRef.current) {
+      hasReportedMindmapViewRef.current = true;
+      reportProductEvent('mindmap_viewed');
+    }
     void ensureNotes();
     ensureMindNodes().then(async loadedNodes => {
       const cachedPreferences = getCachedMindmapPreferences();
@@ -158,7 +213,6 @@ export default function MindMapPage() {
     if (!preferencesReady || mindNodes === null) return;
     const demoClosed = window.localStorage.getItem(MINDMAP_DEMO_CLOSED_KEY) === 'true';
     const frame = requestAnimationFrame(() => {
-      setHasClosedDemo(demoClosed);
       if (nodes.length === 0 && !hasEverAddedMindNode && !demoClosed) {
         setIsDemoOpen(true);
       }
@@ -168,7 +222,6 @@ export default function MindMapPage() {
 
   function handleCloseDemo() {
     window.localStorage.setItem(MINDMAP_DEMO_CLOSED_KEY, 'true');
-    setHasClosedDemo(true);
     setIsDemoOpen(false);
   }
 
@@ -185,10 +238,52 @@ export default function MindMapPage() {
   }
 
   useEffect(() => {
-    if (!readyFocus) return;
-    const timer = window.setTimeout(() => setLinesHash(hash), 500);
+    if (!readyFocus || mindmapMotion?.status !== 'ready') return;
+
+    const motion = mindmapMotion;
+    const startTimer = window.setTimeout(() => {
+      dispatchAnimation({ type: 'START', id: motion.id, mode: motion.mode });
+    }, 0);
+    return () => window.clearTimeout(startTimer);
+  }, [mindmapMotion, readyFocus]);
+
+  useEffect(() => {
+    if (animation.phase !== 'moving' || animation.motionId === null || animation.mode === null) return;
+
+    const timer = window.setTimeout(() => {
+      dispatchAnimation({ type: 'REVEAL_LINES', id: animation.motionId! });
+    }, animation.mode === 'full' ? 1050 : 280);
     return () => window.clearTimeout(timer);
-  }, [hash, readyFocus]);
+  }, [animation]);
+
+  useEffect(() => {
+    if (animation.phase !== 'lines-revealed' || animation.motionId === null || animation.mode === null) return;
+
+    const timer = window.setTimeout(() => {
+      const motionId = animation.motionId!;
+      completeMindmapMotion(motionId);
+      dispatchAnimation({ type: animation.mode === 'full' ? 'SHOW_NOTICE' : 'FINISH', id: motionId });
+    }, animation.mode === 'full' ? 200 : 180);
+    return () => window.clearTimeout(timer);
+  }, [animation]);
+
+  useEffect(() => {
+    if (animation.phase !== 'notice' || animation.motionId === null) return;
+
+    const timer = window.setTimeout(() => {
+      dispatchAnimation({ type: 'LEAVE_NOTICE', id: animation.motionId! });
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [animation]);
+
+  useEffect(() => {
+    if (animation.phase !== 'notice-leaving' || animation.motionId === null) return;
+
+    const timer = window.setTimeout(() => {
+      dispatchAnimation({ type: 'FINISH', id: animation.motionId! });
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [animation]);
 
   function handleCloseOverlay() {
     setSelectedNodeId(null);
@@ -196,6 +291,10 @@ export default function MindMapPage() {
   }
 
   function handleNodeClick(nodeId: string) {
+    if (!hasReportedMindmapNodeOpenRef.current) {
+      hasReportedMindmapNodeOpenRef.current = true;
+      reportProductEvent('mindmap_node_opened');
+    }
     setSelectedFocusResult(readyFocus);
     setSelectedNodeId(nodeId);
   }
@@ -309,7 +408,13 @@ export default function MindMapPage() {
   const fittedLayout = fitLayoutToCanvas(rawLayout, SVG_WIDTH + PAD * 2, SVG_HEIGHT + PAD * 2, PAD);
   const layout = fittedLayout.layout;
   const visibleEdges = focusResult ? buildVisibleEdges(focusResult) : [];
-  const showLines = Boolean(focusResult && linesHash === hash);
+  const isWaitingToRevealLines = mindmapMotion?.status === 'ready'
+    && (animation.motionId !== mindmapMotion.id || animation.phase === 'moving');
+  const showLines = Boolean(focusResult && !isWaitingToRevealLines);
+  const activeMotionMode = mindmapMotion?.status === 'ready' ? mindmapMotion.mode : undefined;
+  const discoveredRelationCount = readyFocus
+    ? readyFocus.primaryRelated.length + readyFocus.secondaryRelated.length
+    : 0;
 
   function getNodeType(nodeId: string): 'root' | 'primary' | 'secondary' | 'background' {
     if (!focusResult) return 'background';
@@ -365,9 +470,7 @@ export default function MindMapPage() {
     <main className="app-page min-h-[100dvh] pb-[72px] px-[24px]">
       <div className="mindmap-title-row pt-[var(--space-48)] pb-[var(--space-8)]">
         <h1 className="page-title">脑图</h1>
-        {hasClosedDemo && (
-          <button className="mindmap-demo-entry" type="button" onClick={() => setIsDemoOpen(true)}>查看示例</button>
-        )}
+        <button className="mindmap-demo-entry" type="button" onClick={() => setIsDemoOpen(true)}>查看示例</button>
       </div>
       {nodes.length > 0 && (
         <p className="text-[13px] text-[var(--text-hint)] mb-[var(--space-24)]">
@@ -407,7 +510,7 @@ export default function MindMapPage() {
             height={paddedHeight}
             style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}
           >
-            {showLines && visibleEdges.map(edge => {
+            {visibleEdges.map(edge => {
               const sourcePos = layout.get(edge.source);
               const targetPos = layout.get(edge.target);
               if (!sourcePos || !targetPos) return null;
@@ -420,6 +523,7 @@ export default function MindMapPage() {
                   y2={targetPos.y}
                   stroke="#D1CBB8"
                   strokeWidth={1}
+                  className={`mindmap-edge${showLines ? ' mindmap-edge--visible' : ''}`}
                 />
               );
             })}
@@ -436,6 +540,7 @@ export default function MindMapPage() {
                   label={node.label}
                   x={position.x}
                   y={position.y}
+                  motionMode={activeMotionMode}
                   highlighted={!selectedNodeId ? undefined : selectedNodeId === node.id}
                   onClick={() => handleNodeClick(node.id)}
                 />
@@ -497,6 +602,17 @@ export default function MindMapPage() {
       )}
 
       <BottomNav />
+
+      {(animation.phase === 'notice' || animation.phase === 'notice-leaving') && (
+        <div
+          className={`mindmap-formation-notice${animation.phase === 'notice-leaving' ? ' mindmap-formation-notice--leaving' : ''}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span>✓</span>
+          <span>Hunter已发现{discoveredRelationCount}条关联</span>
+        </div>
+      )}
 
       {clusterActionTarget && (
         <NodeActionDialog

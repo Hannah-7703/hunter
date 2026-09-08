@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import Image from 'next/image';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import type { Note } from '@/shared/types';
 import { updateNote } from '@/lib/store';
@@ -21,7 +22,6 @@ import Tabs from '@/components/ui/Tabs';
 import Card from '@/components/ui/Card';
 import BulletCard from '@/components/ui/BulletCard';
 import AddRowButton from '@/components/ui/AddRowButton';
-import LoadingView from '@/components/ui/LoadingView';
 import BottomNav from '@/components/ui/BottomNav';
 import { showToast } from '@/components/ui/Toast';
 import { downloadMarkdown } from '@/lib/export';
@@ -32,6 +32,54 @@ type FirstNodeGuideAnchor = {
   fingerLeft: number;
   fingerTop: number;
 };
+
+type DeepThinkingTab = 'question' | 'breakdown' | 'expand';
+const DEEP_THINKING_TABS: DeepThinkingTab[] = ['breakdown', 'expand', 'question'];
+type WalnutMood = 'positive' | 'negative' | 'neutral';
+
+function InsightWalnut({ mood, delayed }: { mood: WalnutMood; delayed: boolean }) {
+  return (
+    <span
+      className={`ai-notes-walnut ai-notes-walnut--${mood} ${delayed ? 'ai-notes-walnut--delayed' : ''}`}
+      aria-hidden="true"
+    >
+      <Image
+        className="ai-notes-walnut-image ai-notes-walnut-image--neutral"
+        src="/images/walnut/neutral-curious-peek-v1.png"
+        alt=""
+        fill
+        sizes="36px"
+      />
+      {mood === 'positive' && (
+        <Image
+          className="ai-notes-walnut-image ai-notes-walnut-image--happy"
+          src="/images/walnut/happy-peek-v1.png"
+          alt=""
+          fill
+          sizes="36px"
+        />
+      )}
+      {mood === 'negative' && (
+        <Image
+          className="ai-notes-walnut-image ai-notes-walnut-image--emo"
+          src="/images/walnut/emo-peek-v1.png"
+          alt=""
+          fill
+          sizes="36px"
+        />
+      )}
+      {mood === 'neutral' && (
+        <Image
+          className="ai-notes-walnut-image ai-notes-walnut-image--blink"
+          src="/images/walnut/neutral-blink-peek-v1.png"
+          alt=""
+          fill
+          sizes="36px"
+        />
+      )}
+    </span>
+  );
+}
 
 function FirstNodeGuide({ anchor }: { anchor: FirstNodeGuideAnchor }) {
   return (
@@ -64,9 +112,12 @@ export default function NotesPage() {
 
   const [note, setNote] = useState<Note | null>(() => getCachedNote(id));
   const [mindNodeIds, setMindNodeIds] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState('breakdown');
+  const [activeTab, setActiveTab] = useState<DeepThinkingTab>('breakdown');
+  const [revealPhaseBItems, setRevealPhaseBItems] = useState(false);
+  const [draftItemId, setDraftItemId] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const dtSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const phaseBAnimationTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const phaseBTriggered = useRef(false);
   const phaseBRequestRef = useRef<string | null>(null);
   const [phaseBFailed, setPhaseBFailed] = useState(false);
@@ -78,11 +129,18 @@ export default function NotesPage() {
   const [firstNodeGuideAnchor, setFirstNodeGuideAnchor] = useState<FirstNodeGuideAnchor | null>(null);
   const [mindmapNudgeCount, setMindmapNudgeCount] = useState<number | null>(null);
 
+  const startPhaseBItemReveal = useCallback(() => {
+    clearTimeout(phaseBAnimationTimer.current);
+    setRevealPhaseBItems(true);
+    phaseBAnimationTimer.current = setTimeout(() => setRevealPhaseBItems(false), 460);
+  }, []);
+
   // Cleanup all save timers on unmount
   useEffect(() => {
     return () => {
       clearTimeout(saveTimer.current);
       clearTimeout(dtSaveTimer.current);
+      clearTimeout(phaseBAnimationTimer.current);
     };
   }, []);
 
@@ -185,41 +243,51 @@ export default function NotesPage() {
     phaseBTriggered.current = true;
     const requestId = note.id;
     phaseBRequestRef.current = requestId;
-    processPhaseB(note.original, note.keyPoints)
+    processPhaseB(
+      note.original,
+      note.keyPoints,
+      note.deepThinking.emotionInsight,
+    )
       .then(deepThinking => {
         if (phaseBRequestRef.current !== requestId) return;
+        startPhaseBItemReveal();
         setNote(prev => {
           if (!prev) return prev;
-          const updated = { ...prev, deepThinking };
+          const updated = { ...prev, deepThinking: { ...prev.deepThinking, ...deepThinking } };
           upsertCachedNote(updated);
           return updated;
         });
-        updateNote(id, { deepThinking }).catch(() => {
-          showToast('深度分析保存失败，请刷新页面', 'error');
+        updateNote(id, { deepThinking: { ...note.deepThinking, ...deepThinking } }).catch(() => {
+          showToast('继续想想保存失败，请刷新页面', 'error');
         });
       })
       .catch(() => {
         if (phaseBRequestRef.current !== requestId) return;
         setPhaseBFailed(true);
       });
-  }, [note, id, phaseBReady]);
+  }, [note, id, phaseBReady, startPhaseBItemReveal]);
 
   function handleRetryPhaseB() {
     if (!note) return;
     setPhaseBFailed(false);
     const requestId = note.id;
     phaseBRequestRef.current = requestId;
-    processPhaseB(note.original, note.keyPoints)
+    processPhaseB(
+      note.original,
+      note.keyPoints,
+      note.deepThinking.emotionInsight,
+    )
       .then(deepThinking => {
         if (phaseBRequestRef.current !== requestId) return;
+        startPhaseBItemReveal();
         setNote(prev => {
           if (!prev) return prev;
-          const updated = { ...prev, deepThinking };
+          const updated = { ...prev, deepThinking: { ...prev.deepThinking, ...deepThinking } };
           upsertCachedNote(updated);
           return updated;
         });
-        updateNote(id, { deepThinking }).catch(() => {
-          showToast('深度分析保存失败，请刷新页面', 'error');
+        updateNote(id, { deepThinking: { ...note.deepThinking, ...deepThinking } }).catch(() => {
+          showToast('继续想想保存失败，请刷新页面', 'error');
         });
       })
       .catch(() => {
@@ -268,28 +336,75 @@ export default function NotesPage() {
     if (!note) return;
     const kps = [...note.keyPoints];
     kps[idx] = { ...kps[idx], [field]: value };
+    if (draftItemId === kps[idx].id) {
+      if (!kps[idx].summary.trim() && !kps[idx].detail.trim()) {
+        setNote({ ...note, keyPoints: kps });
+        return;
+      }
+      setDraftItemId(null);
+    }
     updateField('keyPoints', kps);
   }
 
-  function updateDTItem(tab: string, idx: number, field: 'summary' | 'detail', value: string) {
+  function updateEmotionInsight(field: 'summary' | 'detail', value: string) {
+    if (!note || !note.deepThinking.emotionInsight?.present) return;
+    updateField('deepThinking', {
+      ...note.deepThinking,
+      emotionInsight: { ...note.deepThinking.emotionInsight, [field]: value },
+    });
+  }
+
+  function updateDTItem(tab: DeepThinkingTab, idx: number, field: 'summary' | 'detail', value: string) {
     if (!note) return;
     const dt = { ...note.deepThinking };
-    const items = [...(dt[tab as keyof typeof dt] || [])];
+    const items = [...dt[tab]];
     items[idx] = { ...items[idx], [field]: value };
+    if (draftItemId === items[idx].id) {
+      if (!items[idx].summary.trim() && !items[idx].detail.trim()) {
+        setNote({ ...note, deepThinking: { ...dt, [tab]: items } });
+        return;
+      }
+      setDraftItemId(null);
+    }
     updateField('deepThinking', { ...dt, [tab]: items });
   }
 
-  function addRow(section: 'keyPoints' | 'deepThinking', tab?: string) {
+  function addRow(section: 'keyPoints' | 'deepThinking', tab?: DeepThinkingTab) {
     if (!note) return;
     if (section === 'keyPoints') {
       const newKp = { id: `ukp_${Date.now()}`, summary: '', detail: '' };
-      updateField('keyPoints', [...note.keyPoints, newKp]);
+      setNote({ ...note, keyPoints: [...note.keyPoints, newKp] });
+      setDraftItemId(newKp.id);
     } else if (tab) {
       const dt = { ...note.deepThinking };
-      const items = [...(dt[tab as keyof typeof dt] || [])];
-      items.push({ id: `udt_${Date.now()}`, summary: '', detail: '' });
-      updateField('deepThinking', { ...dt, [tab]: items });
+      const items = [...dt[tab]];
+      const newItem = { id: `udt_${Date.now()}`, summary: '', detail: '' };
+      items.push(newItem);
+      setNote({ ...note, deepThinking: { ...dt, [tab]: items } });
+      setDraftItemId(newItem.id);
     }
+  }
+
+  function discardKeyPointDraft(itemId: string) {
+    if (!note || draftItemId !== itemId) return;
+    const updated = { ...note, keyPoints: note.keyPoints.filter(item => item.id !== itemId) };
+    setDraftItemId(null);
+    setNote(updated);
+    upsertCachedNote(updated);
+  }
+
+  function discardDeepThinkingDraft(tab: DeepThinkingTab, itemId: string) {
+    if (!note || draftItemId !== itemId) return;
+    const updated = {
+      ...note,
+      deepThinking: {
+        ...note.deepThinking,
+        [tab]: note.deepThinking[tab].filter(item => item.id !== itemId),
+      },
+    };
+    setDraftItemId(null);
+    setNote(updated);
+    upsertCachedNote(updated);
   }
 
   async function handleToggleMindNode(itemId: string, summary: string, detail: string) {
@@ -318,14 +433,25 @@ export default function NotesPage() {
 
   if (!note) return null;
 
-  const tabs = ['breakdown', 'expand', 'question'] as const;
-  const tabLabels: Record<string, string> = { question: '拷问', breakdown: '拆解', expand: '拓展' };
-  const dtItems = note.deepThinking[activeTab as keyof typeof note.deepThinking] || [];
+  const tabs = DEEP_THINKING_TABS;
+  const emotionInsight = note.deepThinking.emotionInsight;
+  const walnutMood: WalnutMood = emotionInsight?.present && emotionInsight.valence === 'positive'
+    ? 'positive'
+    : emotionInsight?.present && emotionInsight.valence === 'negative'
+      ? 'negative'
+      : 'neutral';
+  const tabLabels: Record<DeepThinkingTab, string> = {
+    breakdown: '理清脉络',
+    expand: '打开可能',
+    question: '换个角度',
+  };
+  const dtItems = note.deepThinking[activeTab];
+  const phaseBLoading = !phaseBReady && !phaseBFailed;
 
   return (
     <main className="app-page min-h-[100dvh] pb-[72px] px-[24px]">
       <div className="pt-[var(--space-48)] pb-[var(--space-16)] flex items-center justify-between">
-        <BackButton onClick={() => router.push(from === 'capture' ? '/' : '/history')} />
+        <BackButton onClick={() => router.push('/history')} />
         <button
           className="export-btn"
           data-tour="export"
@@ -357,7 +483,7 @@ export default function NotesPage() {
         )}
 
         <div className="flex flex-col gap-[var(--space-24)]">
-          <Card>
+          <Card className={from === 'capture' ? 'ai-notes-reveal ai-notes-reveal--original' : ''}>
             <Accordion title="提炼原文">
             <p className="text-[15px] text-[var(--text-primary)] whitespace-pre-wrap">
               {note.original}
@@ -365,44 +491,70 @@ export default function NotesPage() {
           </Accordion>
         </Card>
 
-        <Card>
-          <Accordion title="提炼观点">
-            <div className="flex flex-col gap-[var(--space-16)]">
+        <Card className={from === 'capture' ? 'ai-notes-reveal ai-notes-reveal--insight' : ''}>
+          <Accordion
+            title="看见自己"
+            headerAccessory={(
+              <span className="ai-notes-walnut-clip">
+                <InsightWalnut mood={walnutMood} delayed={from === 'capture'} />
+              </span>
+            )}
+          >
+            <div className="ai-notes-insight-list flex flex-col gap-[var(--space-16)]">
+              {note.deepThinking.emotionInsight?.present && (
+                <div className="ai-notes-insight-item">
+                  <BulletCard
+                    summary={note.deepThinking.emotionInsight.summary}
+                    detail={note.deepThinking.emotionInsight.detail}
+                    onSummaryChange={v => updateEmotionInsight('summary', v)}
+                    onDetailChange={v => updateEmotionInsight('detail', v)}
+                    plusSelected={mindNodeIds.has(note.deepThinking.emotionInsight.id)}
+                    onPlusClick={() => handleToggleMindNode(
+                      note.deepThinking.emotionInsight!.id,
+                      note.deepThinking.emotionInsight!.summary,
+                      note.deepThinking.emotionInsight!.detail,
+                    )}
+                    plusDisabled={!note.deepThinking.emotionInsight.summary.trim()}
+                    plusPending={pendingItemId === note.deepThinking.emotionInsight.id}
+                  />
+                </div>
+              )}
               {note.keyPoints.map((kp, i) => (
-                <BulletCard
-                  key={kp.id}
-                  summary={kp.summary}
-                  detail={kp.detail}
-                  onSummaryChange={v => updateKeyPoint(i, 'summary', v)}
-                  onDetailChange={v => updateKeyPoint(i, 'detail', v)}
-                  plusSelected={mindNodeIds.has(kp.id)}
-                  onPlusClick={() => handleToggleMindNode(kp.id, kp.summary, kp.detail)}
-                  plusDisabled={!kp.summary.trim()}
-                  plusPending={pendingItemId === kp.id}
-                  guideTarget={showFirstNodeGuide && guideTargetId === kp.id}
-                />
+                <div className="ai-notes-insight-item" key={kp.id}>
+                  <BulletCard
+                    summary={kp.summary}
+                    detail={kp.detail}
+                    onSummaryChange={v => updateKeyPoint(i, 'summary', v)}
+                    onDetailChange={v => updateKeyPoint(i, 'detail', v)}
+                    plusSelected={mindNodeIds.has(kp.id)}
+                    onPlusClick={() => handleToggleMindNode(kp.id, kp.summary, kp.detail)}
+                    plusDisabled={!kp.summary.trim()}
+                    plusPending={pendingItemId === kp.id}
+                    guideTarget={showFirstNodeGuide && guideTargetId === kp.id}
+                    autoFocusSummary={draftItemId === kp.id}
+                    onEmptyBlur={draftItemId === kp.id ? () => discardKeyPointDraft(kp.id) : undefined}
+                  />
+                </div>
               ))}
               <AddRowButton label="+ 添加观点" onClick={() => addRow('keyPoints')} />
             </div>
           </Accordion>
         </Card>
 
-        <Card>
-          <Accordion title="深度分析">
+        <Card className={from === 'capture' ? 'ai-notes-reveal ai-notes-reveal--deep-thinking' : ''}>
+          <Accordion title="继续想想">
             <Tabs
               tabs={tabs.map(t => tabLabels[t])}
               activeTab={tabLabels[activeTab]}
               onTabChange={label => {
                 const entry = Object.entries(tabLabels).find(([, v]) => v === label);
-                if (entry) setActiveTab(entry[0]);
+                if (entry) setActiveTab(entry[0] as DeepThinkingTab);
               }}
             />
             <div className="flex flex-col gap-[var(--space-16)] mt-[var(--space-16)]">
-              {(!phaseBReady && !phaseBFailed) ? (
-                <LoadingView text="正在生成深度分析…" />
-              ) : phaseBFailed ? (
+              {phaseBFailed ? (
                 <div className="text-center py-[var(--space-16)]">
-                  <p className="text-[13px] text-[var(--text-hint)] mb-[var(--space-8)]">深度分析生成失败</p>
+                  <p className="text-[13px] text-[var(--text-hint)] mb-[var(--space-8)]">继续想想生成失败</p>
                   <button
                     className="text-[14px] text-[var(--brand)] underline cursor-pointer bg-transparent border-none"
                     onClick={handleRetryPhaseB}
@@ -410,22 +562,37 @@ export default function NotesPage() {
                     点击重试
                   </button>
                 </div>
+              ) : phaseBLoading ? (
+                <div className="phase-b-loading" role="status" aria-label="正在继续想想">
+                  {[0, 1, 2].map(index => (
+                    <div className="phase-b-skeleton" aria-hidden="true" key={index}>
+                      <span className="phase-b-skeleton-summary" />
+                      <span className="phase-b-skeleton-line" />
+                      <span className="phase-b-skeleton-line phase-b-skeleton-line--short" />
+                    </div>
+                  ))}
+                </div>
               ) : dtItems.length === 0 ? (
-                <p className="text-[13px] text-[var(--text-hint)]">深度分析暂时不可用</p>
+                <p className="text-[13px] text-[var(--text-hint)]">继续想想暂时不可用</p>
               ) : (
                 <>
                   {dtItems.map((item, i) => (
-                    <BulletCard
-                      key={item.id}
-                      summary={item.summary}
-                      detail={item.detail}
-                      onSummaryChange={v => updateDTItem(activeTab, i, 'summary', v)}
-                      onDetailChange={v => updateDTItem(activeTab, i, 'detail', v)}
-                      plusSelected={mindNodeIds.has(item.id)}
-                      onPlusClick={() => handleToggleMindNode(item.id, item.summary, item.detail)}
-                      plusDisabled={!item.summary.trim()}
-                      plusPending={pendingItemId === item.id}
-                    />
+                    <div className={revealPhaseBItems ? 'phase-b-item-reveal' : ''} key={item.id}>
+                      <BulletCard
+                        summary={item.summary}
+                        detail={item.detail}
+                        onSummaryChange={v => updateDTItem(activeTab, i, 'summary', v)}
+                        onDetailChange={v => updateDTItem(activeTab, i, 'detail', v)}
+                        plusSelected={mindNodeIds.has(item.id)}
+                        onPlusClick={() => handleToggleMindNode(item.id, item.summary, item.detail)}
+                        plusDisabled={!item.summary.trim()}
+                        plusPending={pendingItemId === item.id}
+                        autoFocusSummary={draftItemId === item.id}
+                        onEmptyBlur={draftItemId === item.id
+                          ? () => discardDeepThinkingDraft(activeTab, item.id)
+                          : undefined}
+                      />
+                    </div>
                   ))}
                   <AddRowButton
                     label="+ 添加条目"
