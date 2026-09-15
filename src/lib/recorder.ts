@@ -45,6 +45,19 @@ export function startRecognition(
   let stopFallbackTimer: ReturnType<typeof setTimeout> | null = null;
   let activeRecognition: any = null;
 
+  function startDurationTimer() {
+    if (timer || stopped) return;
+    timer = setInterval(() => {
+      if (!isPaused) {
+        elapsedSeconds++;
+        if (elapsedSeconds >= 300) {
+          stopInternal();
+          callbacks.onMaxDuration(getTranscript());
+        }
+      }
+    }, 1000);
+  }
+
   function getTranscript(): string {
     return segments
       .map(segment => {
@@ -129,23 +142,20 @@ export function startRecognition(
         resumeRequested = false;
         isPaused = false;
         startInstance();
+        startDurationTimer();
+        return;
       }
+
+      // Browsers may stop a continuous recognition session after a short
+      // interval. Keep the capture session alive and preserve prior segments.
+      startInstance();
     };
 
     instance.start();
-
-    timer = setInterval(() => {
-      if (!isPaused) {
-        elapsedSeconds++;
-        if (elapsedSeconds >= 300) {
-          stopInternal();
-          callbacks.onMaxDuration(getTranscript());
-        }
-      }
-    }, 1000);
   }
 
   startInstance();
+  startDurationTimer();
 
   return {
     stop() {
@@ -172,6 +182,7 @@ export function startRecognition(
         resumeRequested = false;
         isPaused = false;
         startInstance();
+        startDurationTimer();
       }
     },
   };
