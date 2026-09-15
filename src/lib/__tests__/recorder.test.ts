@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startRecognition } from '@/lib/recorder';
 
 class FakeRecognition {
@@ -36,6 +36,45 @@ describe('speech recognition pause and resume', () => {
   beforeEach(() => {
     FakeRecognition.instances = [];
     vi.stubGlobal('window', { SpeechRecognition: FakeRecognition });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('continues recognition after the browser ends a session automatically', async () => {
+    const controller = startRecognition('zh-CN', {
+      onResult: vi.fn(), onError: vi.fn(), onSilence: vi.fn(), onMaxDuration: vi.fn(),
+    });
+    const first = FakeRecognition.instances[0];
+    first.result('第一段内容');
+
+    first.end();
+    const second = FakeRecognition.instances[1];
+    second.result('第二段内容');
+
+    const stopped = controller.stop();
+    second.end();
+    await expect(stopped).resolves.toBe('第一段内容第二段内容');
+  });
+
+  it('keeps one five-minute limit across automatic recognition restarts', () => {
+    vi.useFakeTimers();
+    const onMaxDuration = vi.fn();
+    const controller = startRecognition('zh-CN', {
+      onResult: vi.fn(), onError: vi.fn(), onSilence: vi.fn(), onMaxDuration,
+    });
+    const first = FakeRecognition.instances[0];
+
+    vi.advanceTimersByTime(30_000);
+    first.end();
+    expect(FakeRecognition.instances).toHaveLength(2);
+
+    vi.advanceTimersByTime(269_000);
+    expect(onMaxDuration).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1_000);
+    expect(onMaxDuration).toHaveBeenCalledTimes(1);
+    controller.stop();
   });
 
   it('keeps text from separate recognition instances that both use result index zero', async () => {
